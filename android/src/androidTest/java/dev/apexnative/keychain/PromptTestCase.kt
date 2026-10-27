@@ -5,6 +5,7 @@ package dev.apexnative.keychain
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import androidx.fragment.app.FragmentActivity
@@ -71,10 +72,9 @@ abstract class PromptTestCase {
 
     /** The activity in front again, after the home screen or Settings. */
     internal fun bringBack() {
-        context.startActivity(
-            Intent(context, FragmentActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
-        )
+        // As the launcher does: the task comes back with the activity in it.
+        val launcher = Intent.makeMainActivity(ComponentName(context, FragmentActivity::class.java))
+        context.startActivity(launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val deadline = System.currentTimeMillis() + Person.PATIENCE_MILLIS
         while (scenario.state != Lifecycle.State.RESUMED) {
             if (System.currentTimeMillis() > deadline) fail("The activity didn't come back")

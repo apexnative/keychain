@@ -54,7 +54,8 @@ esac
 
 # A device that hasn't been unlocked since it booted can't run the tests ("not encryption aware"): the PIN first.
 locked() {
-  device shell dumpsys window | grep -qE '(isKeyguardShowing|mShowingLockscreen|mDreamingLockscreen)=true'
+  device shell dumpsys window |
+    grep -qE '(isKeyguardShowing|isStatusBarKeyguard|mShowingLockscreen|mDreamingLockscreen)=true'
 }
 device shell input keyevent KEYCODE_WAKEUP
 if locked && [ -n "$PIN" ]; then

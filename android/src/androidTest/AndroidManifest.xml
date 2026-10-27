@@ -1,10 +1,14 @@
 <!--
-  The activity PromptTest shows its prompts in: a plain FragmentActivity, as BiometricPrompt needs. The network: the
+  The activity PromptTest shows its prompts in: a plain FragmentActivity, as BiometricPrompt needs, with an AppCompat
+  theme, as ReactActivity has — before Android 9 androidx.biometric shows its own AppCompat dialog. The network: the
   emulator's console, through which the tests touch the fingerprint sensor (Person.kt).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET" />
   <application>
-    <activity android:name="androidx.fragment.app.FragmentActivity" android:exported="false" />
+    <activity
+      android:name="androidx.fragment.app.FragmentActivity"
+      android:exported="false"
+      android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
   </application>
 </manifest>

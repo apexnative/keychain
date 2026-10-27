@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.lifecycle.Lifecycle
@@ -17,6 +18,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,6 +27,8 @@ import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.spec.X509EncodedKeySpec
 import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 
 /**
  * The prompt, answered by [Person] at the emulator: a finger on the sensor, a strange finger, the cancel button, the
@@ -42,7 +46,7 @@ class PromptTest : PromptTestCase() {
         for (text in listOf("Subtitle", "Description", CANCEL)) assertTrue(text, Person.sees(text))
         Person.touch(Person.finger)
         assertEquals("secret of finger", reading.await().value)
-        Person.waitUntil("the sensor counts one finger") { Person.recognitions() == accepted + 1 }
+        if (Person.counts) Person.waitUntil("the sensor counts one finger") { Person.recognitions() == accepted + 1 }
     }
 
     @Test
@@ -64,7 +68,13 @@ class PromptTest : PromptTestCase() {
         val reading = read("strange", "Strange")
         Person.prompt("Strange")
         Person.touch(Person.strangeFinger)
-        Person.waitUntil("the sensor counts one strange finger") { Person.rejections() == rejected + 1 }
+        // The service's count or, before Android 8, what the prompt says for a moment.
+        val said = Person.sees("Not recognized")
+        if (Person.counts) {
+            Person.waitUntil("the sensor counts one strange finger") { Person.rejections() == rejected + 1 }
+        } else {
+            assertTrue("The prompt didn't say 'Not recognized': ${Person.screen()}", said)
+        }
         assertTrue(Person.sees("Strange"))
         assertTrue(reading.pending)
         Person.touch(Person.finger)
@@ -107,9 +117,10 @@ class PromptTest : PromptTestCase() {
         } else {
             assertEquals("LOCKOUT", reading.await().code)
             checkAvailable()
-            // The PIN on the lock screen ends the lockout, for the tests after this one.
+            // The PIN on the lock screen ends the lockout, for the tests after this one; Android 7 and 8 wait it out.
             Person.lockScreen()
             Person.unlock()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) Thread.sleep(LOCKOUT_MILLIS)
         }
         assertEquals(setOf(true), available)
     }
@@ -391,19 +402,25 @@ class PromptTest : PromptTestCase() {
     /**
      * A new fingerprint, enrolled in Settings: the Keystore invalidates the keys of `biometryCurrentSet` — the read
      * ends KEY_INVALIDATED, from `KeyPermanentlyInvalidatedException`, without a prompt, and the item is gone —
-     * `getBiometryState` changes, and `biometryAny` reads with the new finger. The finger is deleted after.
+     * `getBiometryState` changes, and `biometryAny` reads with the new finger. The finger is deleted after. A key of
+     * the test's own witnesses that the Keystore saw the new finger at all. The emulator's fingerprint HAL before
+     * Android 10 keeps its authenticator id across enrollments (the API 24 and 28 images), so nothing is ever
+     * invalidated there; on API 24 deleting the finger also leaves the sensor deaf to the next prompts.
      */
     @Test
     fun aNewFingerprintInvalidatesCurrentSet() {
-        val android9 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-        assumeTrue("Settings enrolls a finger with an intent from Android 9", android9)
+        val oldEmulator = Setup.console != null && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
+        assumeFalse("The emulator's fingerprint HAL before Android 10 keeps its authenticator id", oldEmulator)
         write("currentSet", "biometryCurrentSet")
         write("any", "biometryAny")
         val before = call { module.getBiometryState(it) }.value as String
+        val witness = witnessKey()
         val newFinger = (Setup.fingers.max() + 1..Setup.fingers.max() + 9).first { it != Person.strangeFinger }
         val name = Person.enrollFinger(newFinger)
         try {
             bringBack()
+            val seen = invalidated(witness)
+            assumeTrue("The fingerprint HAL keeps its authenticator id: the Keystore can't see a new finger", seen)
             assertNotEquals(before, call { module.getBiometryState(it) }.value)
 
             val invalidated = read("currentSet", "Invalidated, not expected").await(NO_PROMPT_SECONDS)
@@ -421,12 +438,38 @@ class PromptTest : PromptTestCase() {
         } finally {
             Person.deleteFinger(name)
             bringBack()
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(WITNESS)
         }
     }
 
+    // A key a new fingerprint invalidates, as `biometryCurrentSet`'s are, made by the test itself.
+    private fun witnessKey(): SecretKey {
+        val spec = KeyGenParameterSpec.Builder(WITNESS, KeyProperties.PURPOSE_ENCRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setUserAuthenticationRequired(true)
+            .setInvalidatedByBiometricEnrollment(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            spec.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+        }
+        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").run {
+            init(spec.build())
+            generateKey()
+        }
+    }
+
+    private fun invalidated(key: SecretKey) = try {
+        Cipher.getInstance("AES/GCM/NoPadding").init(Cipher.ENCRYPT_MODE, key)
+        false
+    } catch (e: KeyPermanentlyInvalidatedException) {
+        true
+    }
+
     private companion object {
+        const val WITNESS = "apexnative.keychain.test/witness"
         const val USE_PIN = "Use PIN"
         const val LOCKOUT_ATTEMPTS = 5
+        const val LOCKOUT_MILLIS = 31_000L
         const val WINDOW_SECONDS = 5
         const val NO_PROMPT_SECONDS = 5L
         const val GLANCE_MILLIS = 1_500L

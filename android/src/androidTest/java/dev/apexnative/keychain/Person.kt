@@ -5,14 +5,17 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
+import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.net.Socket
 import java.util.regex.Pattern
@@ -73,26 +76,31 @@ internal object Person {
         console.send("finger remove")
     }
 
-    /** How many times the sensor recognized a finger, and didn't: the fingerprint service's counters. */
+    /**
+     * How many times the sensor recognized a finger, and didn't: the fingerprint service's counters, which it keeps
+     * from Android 8 ([counts]).
+     */
     fun recognitions() = counter("accept") + counter("acceptCrypto")
 
     fun rejections() = counter("reject") + counter("rejectCrypto")
+
+    val counts: Boolean get() = shell("dumpsys fingerprint").contains("\"accept\"")
 
     private fun counter(name: String) =
         Regex("\"$name\":(\\d+)").find(shell("dumpsys fingerprint"))?.groupValues?.get(1)?.toInt() ?: 0
 
     /** The prompt titled [title], once it shows. */
-    fun prompt(title: String): UiObject2 = find(By.text(title), "a prompt titled '$title'")
+    fun prompt(title: String): UiObject2 = find(text(title), "a prompt titled '$title'")
 
     /** Whether a prompt titled [title] shows within [millis]. */
-    fun sees(title: String, millis: Long = GLANCE_MILLIS) = ui.wait(Until.hasObject(By.text(title)), millis)
+    fun sees(title: String, millis: Long = GLANCE_MILLIS) = ui.wait(Until.hasObject(text(title)), millis)
 
     /** Waits until no prompt titled [title] shows. */
     fun promptGone(title: String) {
-        if (!ui.wait(Until.gone(By.text(title)), PATIENCE_MILLIS)) fail("The prompt '$title' is still showing")
+        if (!ui.wait(Until.gone(text(title)), PATIENCE_MILLIS)) fail("The prompt '$title' is still showing")
     }
 
-    fun tap(text: String) = find(By.text(text), "a button '$text'").click()
+    fun tap(text: String) = find(text(text), "a button '$text'").click()
 
     /** The PIN, in the field that asks for it: the prompt's or Settings'. */
     fun enterPin() {
@@ -130,60 +138,85 @@ internal object Person {
     }
 
     /**
-     * Enrolls another finger in Settings, as a person does: the PIN, the consent, the finger on the sensor until it's
-     * added. Returns the name Settings gives it.
+     * Enrolls another finger in Settings, as a person does: the PIN, the list of fingerprints, Add, the consent, the
+     * finger on the sensor until it's added. Returns the name Settings gives it. All in one visit: leaving the list
+     * revokes the challenge the enrollment was given, and the sensor then ignores the finger (Android 11).
      */
     fun enrollFinger(id: Int): String {
+        settings(FINGERPRINTS)
+        find(FINGER, "the list of fingerprints")
         val before = fingerNames()
-        settings(ENROLL)
+        find(ADD, "the button that adds a fingerprint").click()
         val deadline = SystemClock.uptimeMillis() + ENROLL_MILLIS
-        while (SystemClock.uptimeMillis() < deadline) {
+        var pinTyped = false
+        while (!ui.hasObject(ADDED)) {
+            if (SystemClock.uptimeMillis() > deadline) fail("Settings didn't add the finger: ${screen()}")
             when {
-                ui.hasObject(ADDED) -> {
-                    find(By.text(Pattern.compile("done", Pattern.CASE_INSENSITIVE)), "Done").click()
-                    break
+                !pinTyped && ui.hasObject(PIN_FIELD) -> {
+                    typePin()
+                    pinTyped = true
                 }
                 ui.hasObject(TOUCH_THE_SENSOR) -> touch(id)
                 ui.hasObject(NEXT) -> ui.findObject(NEXT).click()
             }
             Thread.sleep(STEP_MILLIS)
         }
+        find(By.text(Pattern.compile("done", Pattern.CASE_INSENSITIVE)), "Done").click()
+        waitUntil("the list shows the new finger") { fingerNames().size == before.size + 1 }
         val added = fingerNames() - before.toSet()
+        ui.pressBack()
         if (added.size != 1) fail("Settings enrolled ${added.size} fingers: $added")
         return added.single()
     }
 
-    /** Deletes the finger [name] in Settings. */
+    /** Deletes the finger [name] in Settings: its row's delete button, or on Android 7 the row's own dialog. */
     fun deleteFinger(name: String) {
         settings(FINGERPRINTS)
-        find(By.desc("Delete $name"), "the button that deletes '$name'").click()
-        // 'Delete'; 'Yes, remove' on older Androids.
-        val confirm = Pattern.compile("delete|remove|yes, remove", Pattern.CASE_INSENSITIVE)
-        find(By.text(confirm).clazz("android.widget.Button"), "the button that confirms it").click()
-        if (!ui.wait(Until.gone(By.desc("Delete $name")), PATIENCE_MILLIS)) fail("'$name' wasn't deleted")
+        val finger = find(By.res("android", "title").text(name), "'$name' among the fingerprints")
+        (ui.findObjects(DELETE_BUTTON).firstOrNull { nameOfRow(it) == name } ?: finger).click()
+        // 'Delete', or 'Yes, remove', once or twice.
+        val confirm = By.clazz("android.widget.Button")
+            .text(Pattern.compile("delete|remove|yes, remove", Pattern.CASE_INSENSITIVE))
+        find(confirm, "the button that deletes it").click()
+        val gone = By.res("android", "title").text(name)
+        if (!ui.wait(Until.gone(gone), GLANCE_MILLIS)) ui.findObject(confirm)?.click()
+        if (!ui.wait(Until.gone(gone), PATIENCE_MILLIS)) fail("'$name' wasn't deleted: ${screen()}")
         ui.pressBack()
     }
 
-    /** The enrolled fingers' names in Settings. */
-    fun fingerNames(): List<String> {
-        settings(FINGERPRINTS)
-        find(By.desc(DELETE), "the list of fingerprints")
-        val names = ui.findObjects(By.desc(DELETE)).map { it.contentDescription.removePrefix("Delete ") }
-        ui.pressBack()
-        return names
+    // The enrolled fingers in Settings' list, which names them 'Finger 1', 'Finger 2', ….
+    private fun fingerNames(): List<String> = ui.findObjects(FINGER).map { it.text }
+
+    // The name in the row of a delete button: the nearest title above it.
+    private fun nameOfRow(button: UiObject2): String? {
+        var row = button.parent
+        while (row != null && !row.hasObject(By.res("android", "title"))) row = row.parent
+        return row?.findObject(By.res("android", "title"))?.text
     }
 
     // A screen of Settings, which asks for the PIN first.
     private fun settings(action: String) {
-        val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-        try {
-            context.startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            assumeTrue("Settings has no '$action' on this Android", false)
+        if (!start(action)) {
+            // Before Android 10 the list has no action of its own: Security, then Fingerprint.
+            assumeTrue("Settings has no '$action' nor security settings here", start(Settings.ACTION_SECURITY_SETTINGS))
+            val entry = By.text(Pattern.compile("fingerprint", Pattern.CASE_INSENSITIVE))
+            val list = ui.wait(Until.findObject(By.scrollable(true)), PATIENCE_MILLIS)
+            val found = ui.findObject(entry) ?: list?.scrollUntil(Direction.DOWN, Until.findObject(entry))
+            (found ?: find(entry, "Fingerprint in the security settings")).click()
         }
         find(PIN_FIELD, "Settings asking for the PIN")
         typePin()
         if (!ui.wait(Until.gone(PIN_FIELD), PATIENCE_MILLIS)) fail("Settings didn't take the PIN")
+    }
+
+    // A text as it shows: buttons are in capitals before Android 12.
+    private fun text(text: String) = By.text(Pattern.compile(Pattern.quote(text), Pattern.CASE_INSENSITIVE))
+
+    private fun start(action: String): Boolean = try {
+        context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        true
+    } catch (e: ActivityNotFoundException) {
+        false
     }
 
     private fun typePin() {
@@ -193,9 +226,16 @@ internal object Person {
 
     private fun find(selector: BySelector, what: String): UiObject2 =
         ui.wait(Until.findObject(selector), PATIENCE_MILLIS) ?: run {
-            fail("No $what on the screen")
+            fail("No $what on the screen: ${screen()}")
             throw AssertionError()
         }
+
+    /** What the screen says: its texts and descriptions, for a failure's message. */
+    fun screen(): String {
+        val hierarchy = ByteArrayOutputStream().also { ui.dumpWindowHierarchy(it) }.toString()
+        return Regex("""(?:text|content-desc)="([^"]+)"""").findAll(hierarchy).map { it.groupValues[1] }.toList()
+            .joinToString(" | ")
+    }
 
     fun shell(command: String): String = ui.executeShellCommand(command)
 
@@ -220,15 +260,17 @@ internal object Person {
     private const val POLL_MILLIS = 100L
     private const val ENROLL_MILLIS = 60_000L
 
-    private const val ENROLL = "android.settings.FINGERPRINT_ENROLL"
     private const val FINGERPRINTS = "android.settings.FINGERPRINT_SETTINGS"
-    private val DELETE = Pattern.compile("Delete .+")
     private val PIN_FIELD = By.clazz("android.widget.EditText")
-    private val ADDED = By.text(Pattern.compile("Fingerprint added", Pattern.CASE_INSENSITIVE))
+    private val DELETE_BUTTON = By.res("com.android.settings", "delete_button")
+    private val FINGER = By.res("android", "title").text(Pattern.compile("Finger \\d+"))
+    private val ADD = By.text(Pattern.compile("add fingerprint|add", Pattern.CASE_INSENSITIVE))
+    private val ADDED = By.text(Pattern.compile(".*fingerprint added.*", Pattern.CASE_INSENSITIVE))
     private val TOUCH_THE_SENSOR =
-        By.text(Pattern.compile(".*(touch the sensor|touch again).*", Pattern.CASE_INSENSITIVE))
-    private val NEXT = By.clazz("android.widget.Button")
-        .text(Pattern.compile("more|i agree|agree|next|start", Pattern.CASE_INSENSITIVE))
+        By.text(Pattern.compile(".*(touch the sensor|touch again|put your finger|lift).*", Pattern.CASE_INSENSITIVE))
+    // A button, or before Android 8 an item of a list.
+    private val NEXT = By.pkg("com.android.settings")
+        .text(Pattern.compile("more|i agree|agree|next|start|continue", Pattern.CASE_INSENSITIVE))
 }
 
 /**
