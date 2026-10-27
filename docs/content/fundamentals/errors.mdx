@@ -1,0 +1,86 @@
+---
+title: Errors
+description: 'Every failure is a KeychainError with a code; a missing value is null. The codes by kind, and how to handle the ones a prompt ends with.'
+---
+
+Every method fails with a `KeychainError`. Its `code` says what happened in the same words on iOS and Android; the native code and domain are there for logs.
+
+```ts
+class KeychainError extends Error {
+  readonly code: KeychainErrorCode;
+  readonly nativeCode?: number; // OSStatus, LAError or a BiometricPrompt code
+  readonly nativeDomain?: string;
+}
+```
+
+A missing value is not an error. `getItem` of a key with no item returns `null`; an item that exists but can't be read is an error with a code that says why.
+
+Every code has a constant in `KeychainErrorCode`: `KeychainErrorCode.KeyInvalidated` is the string `'KEY_INVALIDATED'`, so a check works either way. `isKeychainError` tells a `KeychainError` from any other error, and with a code, one code from the rest:
+
+```ts
+import { isKeychainError, KeychainErrorCode } from '@apexnative/keychain';
+
+if (isKeychainError(error, KeychainErrorCode.KeyInvalidated)) signInAgain();
+if (isKeychainError(error) && error.code === 'KEY_INVALIDATED') signInAgain(); // the same
+```
+
+## The codes by kind {#codes}
+
+| Kind | Codes | Usually |
+| --- | --- | --- |
+| The prompt ended without success | `USER_CANCELED`, `USER_FALLBACK`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT` | Offer another way in; try again later |
+| The device can't protect the item | `BIOMETRY_NOT_ENROLLED`, `BIOMETRY_NOT_AVAILABLE`, `PASSCODE_NOT_SET`, `HARDWARE_UNAVAILABLE`, `UNSUPPORTED` | Don't offer this protection; choose another |
+| The item is lost | `KEY_INVALIDATED` | Sign the user in again and store it anew |
+| Not now | `INTERACTION_NOT_ALLOWED`, `AUTH_REQUIRED`, `NO_ACTIVITY` | Read later, or with the async method |
+| The app's setup | `MISSING_ENTITLEMENT`, `MISSING_USAGE_DESCRIPTION`, `INVALID_ARGUMENT` | Fix the code or the configuration |
+| The data | `DATA_CORRUPTED`, `UNKNOWN` | Remove the item; report `nativeCode` |
+
+[Error codes](../help/error-codes) has a section for every code: when it happens, the native error behind it, and what to do.
+
+## Handling a read {#handling}
+
+A switch over the code keeps the cases apart:
+
+```ts
+import { KeychainError, KeychainErrorCode } from '@apexnative/keychain';
+
+async function readRefreshToken(): Promise<string | null> {
+  try {
+    return await vault.getItem('refreshToken');
+  } catch (error) {
+    if (!(error instanceof KeychainError)) throw error;
+    switch (error.code) {
+      case KeychainErrorCode.UserCanceled:
+      case KeychainErrorCode.UserFallback:
+        return null; // show the password form
+      case KeychainErrorCode.Lockout:
+      case KeychainErrorCode.LockoutPermanent:
+        return null; // tell the user that biometrics is locked
+      case KeychainErrorCode.KeyInvalidated:
+        return null; // the item is gone: sign in again
+      case KeychainErrorCode.SystemCanceled:
+        return null; // the app left the screen: try again when it is back
+      default:
+        report(error.code, error.nativeCode, error.nativeDomain);
+        throw error;
+    }
+  }
+}
+```
+
+## Invalid arguments {#invalid-argument}
+
+The package checks keys and options before it reaches the native side, the same way on both platforms, and throws `INVALID_ARGUMENT`:
+
+- an empty key or `service`, one longer than 256 characters, or one with U+0000;
+- a string value, a `label`, a username or a password with U+0000 or a lone surrogate (store such data with `setBytes`);
+- an empty username, or a `label` passed to `setCredentials`;
+- `getCredentials` of an item that has no label, because `setCredentials` didn't write it;
+- `getItem` of an item whose bytes aren't UTF-8 text (read it with `getBytes`);
+- on iOS, a write under a key that another library's item holds in the same service;
+- an option name that doesn't exist, such as a misspelt `acessControl`;
+- `synchronizable: true` with a `*ThisDeviceOnly` value or with an `accessControl` other than `none`;
+- `biometryCurrentSet*` with `authValidity > 0`;
+- a value of an option that isn't one of its values.
+
+Almost all of these are bugs in the calling code: they fail in development, on the first call. [KeychainError](/api/errors/KeychainError) and [KeychainErrorCode](/api/errors/KeychainErrorCode) are the reference.

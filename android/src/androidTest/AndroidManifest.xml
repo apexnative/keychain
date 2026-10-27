@@ -1,0 +1,10 @@
+<!--
+  The activity PromptTest shows its prompts in: a plain FragmentActivity, as BiometricPrompt needs. The network: the
+  emulator's console, through which the tests touch the fingerprint sensor (Person.kt).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <application>
+    <activity android:name="androidx.fragment.app.FragmentActivity" android:exported="false" />
+  </application>
+</manifest>

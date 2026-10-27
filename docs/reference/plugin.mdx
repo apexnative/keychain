@@ -1,0 +1,142 @@
+---
+title: Config plugin
+description: 'What an Expo app lists in app.json for the package: the Face ID text, clearing the items on a reinstall, and the keychain access groups. Prebuild writes them into the iOS project; Android needs nothing.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Config plugin" />
+
+The package is a native library, so an Expo app runs it in a development build or an EAS Build, not in Expo Go. Its config plugin writes the few settings the iOS project needs when `expo prebuild` makes it: a line in `Info.plist` for Face ID, a line that turns on clearing on a reinstall, and the entitlement of shared keychain groups. It writes nothing for Android: the Keystore needs no setup.
+
+## Usage {#usage}
+
+List the package in the `plugins` of `app.json`, with its options or without:
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [
+        "@apexnative/keychain",
+        {
+          "faceIDPermission": "Face ID unlocks your account without a password.",
+          "clearOnReinstall": true,
+          "accessGroups": ["com.example.shared"]
+        }
+      ]
+    ]
+  }
+}
+```
+
+Then build the app with its native code: `npx expo prebuild`, `npx expo run:ios`, or `eas build`, which runs prebuild itself. A change of the options takes effect at the next prebuild.
+
+`"plugins": ["@apexnative/keychain"]`, without options, writes only the Face ID text: the app's own, or the [default one](#default-face-id-permission). The plugin runs once, however many times the app config lists it.
+
+## Options {#options}
+
+<Params
+  label="Option"
+  items={[
+    { name: 'faceIDPermission', type: 'string | false', text: 'The text iOS shows when the app first asks for Face ID: `NSFaceIDUsageDescription`. `false` writes nothing. [More](#faceIDPermission)', default: 'the text already set, else DEFAULT_FACE_ID_PERMISSION' },
+    { name: 'clearOnReinstall', type: 'boolean', default: 'false', text: 'Delete the package\'s items left by an earlier installation of the app: `ApexKeychainClearOnReinstall` in `Info.plist`. [More](#clearOnReinstall)' },
+    { name: 'accessGroups', type: 'string[]', text: 'The keychain access groups the app shares items in, without the team prefix: the `keychain-access-groups` entitlement. [More](#accessGroups)' },
+  ]}
+/>
+
+The plugin checks its options when prebuild runs it. An option it doesn't know fails the prebuild, so that a misspelt `clearOnReinstall` doesn't leave the app without what it asked for:
+
+```text title="Terminal"
+@apexnative/keychain config plugin: unknown option 'cleanOnReinstall'. The options are faceIDPermission, clearOnReinstall, accessGroups.
+```
+
+So do an empty `faceIDPermission`, a `clearOnReinstall` that isn't a boolean, and `accessGroups` that isn't an array of non-empty strings.
+
+## faceIDPermission {#faceIDPermission}
+
+<Facts type="string | false" defaultValue="DEFAULT_FACE_ID_PERMISSION" platforms={['ios']} />
+
+iOS asks every app that uses Face ID to say why, in `NSFaceIDUsageDescription`, and shows the text the first time the app asks for it. Without it, a device with Face ID refuses: every call with a biometric `accessControl`, and [`canUseAccessControl`](/api/device/canUseAccessControl) for one, rejects with `MISSING_USAGE_DESCRIPTION`.
+
+The plugin writes the text it finds first:
+
+1. `faceIDPermission`, when the option is a string;
+2. the text the app has already, from `ios.infoPlist.NSFaceIDUsageDescription` of the app config or from another plugin;
+3. [`DEFAULT_FACE_ID_PERMISSION`](#default-face-id-permission).
+
+```json title="app.json"
+["@apexnative/keychain", { "faceIDPermission": "Face ID unlocks your account without a password." }]
+```
+
+`false` writes nothing and leaves a text that is there as it is: for an app that never protects an item with biometrics, or one that sets the key some other way.
+
+### DEFAULT_FACE_ID_PERMISSION {#default-face-id-permission}
+
+```ts
+const DEFAULT_FACE_ID_PERMISSION =
+  'Allow $(PRODUCT_NAME) to use Face ID to unlock the secrets it keeps in the Keychain.';
+```
+
+The text the plugin writes when the app has none. Xcode puts the app's name in place of `$(PRODUCT_NAME)`. The user reads it in the system alert, so a sentence about what Face ID opens in your app does better.
+
+## clearOnReinstall {#clearOnReinstall}
+
+<Facts type="boolean" defaultValue="false" platforms={['ios']} />
+
+The iOS Keychain keeps an app's items after the app is deleted: an app installed again finds the tokens of the user who deleted it. With `clearOnReinstall: true` the plugin sets `ApexKeychainClearOnReinstall` to `YES` in `Info.plist`, and the package deletes those items instead:
+
+- **When.** At the first call of a store in the new installation, before that call reads or writes anything. No call ever reaches an item of the old installation.
+- **What.** The items the package wrote, in every service of the app's default access group (the first of its `keychain-access-groups`, or its own group without the entitlement).
+- **What stays.** Items in iCloud Keychain: deleting one would delete it on the user's other devices, where the app may still be installed. Items in an access group shared with other apps, which may still use them. Items of other libraries.
+- **Before the first unlock.** After a restart, until the user unlocks the device, iOS can't tell a new installation from the old one. The package deletes nothing then: the call fails with `INTERACTION_NOT_ALLOWED`, and the next call checks again.
+- **An update.** The package marks every installation, with the key or without it. An update that turns the option on deletes nothing: it acts from the next reinstall.
+
+Android needs nothing: deleting the app deletes its data and its Keystore keys. See [Reinstalls](/docs/guides/reinstall).
+
+## accessGroups {#accessGroups}
+
+<Facts type="string[]" platforms={['ios']} />
+
+The keychain access groups the app shares items in, with its widget, its extensions or the other apps of its team. The plugin writes them to the `keychain-access-groups` entitlement, the one the *Keychain Sharing* capability writes in Xcode.
+
+Give each group without the team prefix: the plugin adds `$(AppIdentifierPrefix)`, which Xcode replaces with the team id. A value that starts with `$(` is written as it is.
+
+```json title="app.json"
+["@apexnative/keychain", { "accessGroups": ["com.example.shared"] }]
+```
+
+```xml title="App.entitlements"
+<key>keychain-access-groups</key>
+<array>
+  <string>$(AppIdentifierPrefix)com.example.app</string>
+  <string>$(AppIdentifierPrefix)com.example.shared</string>
+</array>
+```
+
+The first group of the entitlement is where items without an `accessGroup` go. The plugin keeps it: the groups the entitlement has already come first, then the app's own group, `$(AppIdentifierPrefix)<bundle id>`, then the new ones, each once. The items the app wrote before stay where it finds them.
+
+In code a store names its group in full, with the team id: [`accessGroup`](/api/options/KeychainOptions#access-group) `'ABCDE12345.com.example.shared'`. See [Sharing between apps](/docs/guides/sharing-between-apps).
+
+## A bare app {#bare}
+
+An app without prebuild writes the same settings by hand, in Xcode:
+
+| Option | By hand |
+| --- | --- |
+| `faceIDPermission` | `NSFaceIDUsageDescription` in `Info.plist` |
+| `clearOnReinstall` | `ApexKeychainClearOnReinstall`, a Boolean `YES`, in `Info.plist` |
+| `accessGroups` | The *Keychain Sharing* capability under *Signing & Capabilities*, with the groups |
+
+[Installation](/docs/start/installation#optional) shows each one.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'Installation', text: 'Adding the package to an Expo app, and what Expo Go can\'t do.', to: '/docs/start/installation#expo' },
+    { name: 'Reinstalls', text: 'What survives a reinstall on each platform, and when to clear.', to: '/docs/guides/reinstall' },
+    { name: 'Sharing between apps', text: 'Writing to an access group, and reading it from a widget.', to: '/docs/guides/sharing-between-apps' },
+  ]}
+/>

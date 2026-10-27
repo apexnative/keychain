@@ -1,0 +1,110 @@
+---
+title: Constants
+description: 'The constants of react-native-keychain 10, with its names and strings, and what each one means in this package; the few it names but the package does not do are UNSUPPORTED.'
+hide_title: true
+---
+
+import { ApiHeader, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Constants" importName="ACCESSIBLE, ACCESS_CONTROL, AUTHENTICATION_TYPE, BIOMETRY_TYPE, SECURITY_LEVEL, STORAGE_TYPE" from="@apexnative/keychain/compat" />
+
+The six objects of rnk keep their names and their strings, so `Keychain.ACCESS_CONTROL.BIOMETRY_ANY` and `import { ACCESSIBLE } from 'react-native-keychain'` keep working once the import names `/compat`. Each is a plain object with a type of the same name, where rnk has TypeScript enums: the members and the strings are the same, and both are accepted.
+
+```ts
+import * as Keychain from '@apexnative/keychain/compat';
+
+await Keychain.setGenericPassword('ivan', token, {
+  accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+  accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
+});
+```
+
+## ACCESSIBLE {#accessible}
+
+When an item can be read: the `accessible` option of the writes. Each maps to the core's [`Accessible`](/api/options/Accessible).
+
+| Member | String | In the core |
+| --- | --- | --- |
+| `WHEN_UNLOCKED` | `'AccessibleWhenUnlocked'` | `whenUnlocked` |
+| `AFTER_FIRST_UNLOCK` | `'AccessibleAfterFirstUnlock'` | `afterFirstUnlock`, the default |
+| `ALWAYS` | `'AccessibleAlways'` | `UNSUPPORTED`: deprecated by iOS; use `AFTER_FIRST_UNLOCK` |
+| `WHEN_PASSCODE_SET_THIS_DEVICE_ONLY` | `'AccessibleWhenPasscodeSetThisDeviceOnly'` | `whenPasscodeSetThisDeviceOnly` |
+| `WHEN_UNLOCKED_THIS_DEVICE_ONLY` | `'AccessibleWhenUnlockedThisDeviceOnly'` | `whenUnlockedThisDeviceOnly` |
+| `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY` | `'AccessibleAfterFirstUnlockThisDeviceOnly'` | `afterFirstUnlockThisDeviceOnly` |
+
+On Android, as in the core, every item stays on the device: the `…THIS_DEVICE_ONLY` variants change nothing there.
+
+## ACCESS_CONTROL {#access-control}
+
+What unlocks an item: the `accessControl` option. Each maps to the core's [`AccessControl`](/api/options/AccessControl), and means the same on iOS and Android.
+
+| Member | String | In the core |
+| --- | --- | --- |
+| `USER_PRESENCE` | `'UserPresence'` | `biometryAnyOrPasscode` |
+| `BIOMETRY_ANY` | `'BiometryAny'` | `biometryAny` |
+| `BIOMETRY_CURRENT_SET` | `'BiometryCurrentSet'` | `biometryCurrentSet` |
+| `DEVICE_PASSCODE` | `'DevicePasscode'` | `passcode` |
+| `APPLICATION_PASSWORD` | `'ApplicationPassword'` | `UNSUPPORTED`, on writes and on reads |
+| `BIOMETRY_ANY_OR_DEVICE_PASSCODE` | `'BiometryAnyOrDevicePasscode'` | `biometryAnyOrPasscode` |
+| `BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE` | `'BiometryCurrentSetOrDevicePasscode'` | `biometryCurrentSetOrPasscode` |
+
+Without `accessControl` the item has none (`none`). On Android rnk made one key for all of these, which also took the passcode, with a fixed window of 5 seconds. Here each is what its name says, on both platforms: `BIOMETRY_CURRENT_SET` takes no passcode, and a new enrollment invalidates the item. The variants with the passcode, `USER_PRESENCE` among them, need Android 11; before it they are `UNSUPPORTED`.
+
+## AUTHENTICATION_TYPE {#authentication-type}
+
+What [`canImplyAuthentication`](./device#canImplyAuthentication) asks about.
+
+| Member | String | Asks |
+| --- | --- | --- |
+| `DEVICE_PASSCODE_OR_BIOMETRICS` | `'AuthenticationWithBiometricsDevicePasscode'` | An enrolled biometry or a passcode. The default |
+| `BIOMETRICS` | `'AuthenticationWithBiometrics'` | An enrolled biometry |
+
+The `authenticationType` of the read options is accepted and ignored: the item's own protection decides the prompt.
+
+## BIOMETRY_TYPE {#biometry-type}
+
+What [`getSupportedBiometryType`](./device#getSupportedBiometryType) answers. Each is a value of the core's [`BiometryType`](/api/device/BiometryType) with rnk's string.
+
+| Member | String | In the core |
+| --- | --- | --- |
+| `TOUCH_ID` | `'TouchID'` | `touchID` (iOS) |
+| `FACE_ID` | `'FaceID'` | `faceID` (iOS) |
+| `OPTIC_ID` | `'OpticID'` | `opticID` (Apple Vision Pro) |
+| `FINGERPRINT` | `'Fingerprint'` | `fingerprint` (Android) |
+| `FACE` | `'Face'` | `face` (Android) |
+| `IRIS` | `'Iris'` | `iris` (Android) |
+
+## SECURITY_LEVEL {#security-level}
+
+Android: how well a key is kept. It is what [`getSecurityLevel`](./device#getSecurityLevel) answers, from the core's [`HardwareSecurityLevel`](/api/device/HardwareSecurityLevel), and the `securityLevel` option of the writes.
+
+| Member | String | As an answer | As an option |
+| --- | --- | --- | --- |
+| `ANY` | `'ANY'` | Never answered | No requirement |
+| `SECURE_SOFTWARE` | `'SECURE_SOFTWARE'` | The core's `software` | No requirement |
+| `SECURE_HARDWARE` | `'SECURE_HARDWARE'` | The core's `tee` or `strongbox` | The write fails with `HARDWARE_UNAVAILABLE` on a device that keeps keys in software |
+
+iOS ignores the option.
+
+## STORAGE_TYPE {#storage-type}
+
+Android: the cipher of rnk's `storage` option, and what a result names as `storage`.
+
+| Member | String |
+| --- | --- |
+| `AES_CBC` | `'KeystoreAESCBC'` |
+| `AES_GCM_NO_AUTH` | `'KeystoreAESGCM_NoAuth'` |
+| `AES_GCM` | `'KeystoreAESGCM'` |
+| `RSA` | `'KeystoreRSAECB'` |
+
+The package chooses its cipher, AES-GCM in the Android Keystore, and takes no choice: passing `storage` with any value is `UNSUPPORTED`. A result names `storage: 'KeystoreAESGCM'` on Android and `'keychain'` on iOS. The [migration](/api/migrate/migrateFromReactNativeKeychain) reads what rnk stored with each of these ciphers.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'AccessControl', text: 'The core\'s options of what unlocks an item, in full.', to: '/api/options/AccessControl' },
+    { name: 'Accessible', text: 'The core\'s options of when an item can be read.', to: '/api/options/Accessible' },
+    { name: 'Types', text: 'The option and result types of `/compat`.', to: '/api/compat/types' },
+  ]}
+/>

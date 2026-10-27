@@ -1,0 +1,46 @@
+---
+title: iCloud Keychain
+description: 'synchronizable puts an item in iCloud Keychain, so it follows the user to their other Apple devices. What it can be combined with, how reads find it, and what Android does with it.'
+---
+
+import { Os } from '@site/src/components/Intro';
+
+With `synchronizable: true`, an item goes to iCloud Keychain <Os name="iOS" /> and appears on the user's other iPhones, iPads and Macs signed in to the same Apple Account, in the same app.
+
+```ts
+import { createKeychain } from '@apexnative/keychain';
+
+const synced = createKeychain({ service: 'synced', synchronizable: true });
+
+await synced.setItem('deviceSettingsToken', token);
+```
+
+## What it can be combined with {#rules}
+
+iCloud Keychain moves an item between devices, so it can't hold items that are bound to one device:
+
+| With | Allowed |
+| --- | --- |
+| `accessible: 'afterFirstUnlock'` or `'whenUnlocked'` | Yes |
+| `accessible: '*ThisDeviceOnly'` | No: `INVALID_ARGUMENT` |
+| `accessControl` other than `'none'` | No: `INVALID_ARGUMENT` |
+
+The package checks these rules in JavaScript, before the native call, on both platforms: shared code learns about a wrong combination on Android too.
+
+## Reads find either kind {#reads}
+
+The flag is set explicitly on every write. Reads, removes and listings match items whether they are synchronized or not, so an item written with one value of `synchronizable` is found and removed after a change of the option. `getItemInfo` tells which kind an item is.
+
+## What it is for {#when}
+
+Good fits are things that should follow the user and are safe on any of their devices: a setting, a token that only identifies the user's account to your service, a key for data the user syncs anyway.
+
+Keep out of it:
+
+- tokens your server ties to one device;
+- anything behind biometrics (it can't be synchronized anyway);
+- anything the app must have: iCloud Keychain may be off on a device, and synchronization is eventual, so an item may arrive later or not at all. It isn't a backup.
+
+## Android {#android}
+
+Android has no iCloud Keychain <Os name="Android" />. The option is ignored there, with a warning in development, so that shared code needs no `Platform.select`; `getItemInfo` reports `synchronizable: false`. Synchronization between Android devices (Block Store) isn't part of version 1.

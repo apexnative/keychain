@@ -1,0 +1,43 @@
+---
+title: getHardwareSecurityLevel
+description: 'Where Android keeps new Keystore keys: StrongBox, the Trusted Execution Environment, or software. Always null on iOS.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="getHardwareSecurityLevel" />
+
+## Usage {#usage}
+
+```ts
+import { getHardwareSecurityLevel, HardwareSecurityLevel } from '@apexnative/keychain';
+
+const level = await getHardwareSecurityLevel();
+if (level === HardwareSecurityLevel.Software) {
+  reportWeakDevice(); // an emulator, or a device without secure hardware
+}
+```
+
+## Signature {#signature}
+
+```ts
+function getHardwareSecurityLevel(): Promise<HardwareSecurityLevel | null>;
+```
+
+<Facts returns="Promise<HardwareSecurityLevel | null>" prompt="Never" />
+
+### Returns {#returns}
+
+The best place a new key can live on this device: `'strongbox'` when the device has StrongBox, else where a key made in the TEE actually lives, `'tee'` or `'software'`. See [HardwareSecurityLevel](./HardwareSecurityLevel). `null` on iOS, where the Secure Enclave protects every item and there is nothing to choose.
+
+The answer is measured once, with a short-lived probe key, and kept. It is what the device offers, not where a given item's key is: that one is `android.securityLevel` in [`getItemInfo`](/api/storage/methods#getItemInfo), and depends on the item's [`keyStorage`](/api/options/KeyStorage) too.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'KeyStorage', text: 'Where an item\'s key is asked to live.', to: '/api/options/KeyStorage' },
+    { name: 'On Android', text: 'How the package uses the Keystore.', to: '/docs/security/android' },
+  ]}
+/>

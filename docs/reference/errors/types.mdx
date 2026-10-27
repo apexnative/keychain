@@ -1,0 +1,39 @@
+---
+title: Types of errors
+sidebar_label: Types
+description: 'The native details of a KeychainError.'
+hide_title: true
+---
+
+import { ApiHeader, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Types" importName="type KeychainErrorDetails" />
+
+## KeychainErrorDetails {#keychainerrordetails}
+
+```ts
+type KeychainErrorDetails = {
+  nativeCode?: number;
+  nativeDomain?: string;
+  cause?: unknown;
+};
+```
+
+The third argument of the [`KeychainError`](./KeychainError#constructor) constructor: what the native side said, kept for logs.
+
+<Params
+  label="Field"
+  items={[
+    { name: 'nativeCode', type: 'number', text: 'The native code: an iOS `OSStatus` or `LAError`, an Android `BiometricPrompt` code.' },
+    { name: 'nativeDomain', type: 'string', text: 'Where `nativeCode` comes from, such as `NSOSStatusErrorDomain`.' },
+    { name: 'cause', type: 'unknown', text: 'The error this one was made from. Becomes the error\'s `cause`, not enumerable.' },
+  ]}
+/>
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'KeychainError', text: 'The class.', to: '/api/errors/KeychainError' },
+  ]}
+/>

@@ -1,0 +1,160 @@
+---
+title: Installation
+description: 'Add the package to a bare React Native app or an Expo app, set up what biometrics needs, and check that it works.'
+---
+
+import PackageInstall from '@site/src/components/PackageInstall';
+import { Mark, Paths, Requirements } from '@site/src/components/Intro';
+
+The package is a regular native library: a TurboModule that autolinking picks up in a bare app and in an Expo app with a dev build. On Android there is nothing to configure; on iOS, biometrics needs one line in `Info.plist`.
+
+## Requirements {#requirements}
+
+<Requirements
+  items={[
+    {
+      title: 'React Native',
+      tone: '#E9B949',
+      lines: ['0.80 or newer.', <>The <Mark>New Architecture</Mark> only.</>],
+    },
+    {
+      title: 'iOS',
+      tone: '#5FA8D3',
+      lines: [
+        'iOS 15.1 or newer, the minimum of React Native.',
+        'iPadOS and Mac Catalyst too.',
+      ],
+    },
+    {
+      title: 'Android',
+      tone: '#8A9A5B',
+      lines: ['minSdk 24 or higher.', 'The passcode options need Android 11 (API 30).'],
+    },
+    {
+      title: 'Expo',
+      tone: '#457B9D',
+      lines: ['SDK 54 or newer.', 'A dev build, EAS Build or prebuild; not Expo Go.'],
+    },
+  ]}
+/>
+
+## Two ways to add it {#paths}
+
+<Paths
+  items={[
+    {
+      eyebrow: 'React Native CLI',
+      title: 'A bare app',
+      text: 'Install the package and the pods; add a Face ID description if you use biometrics.',
+      command: 'npm install @apexnative/keychain',
+      to: '#bare',
+    },
+    {
+      eyebrow: 'Expo',
+      title: 'An Expo app',
+      text: 'Install the package and add its config plugin; prebuild writes the native settings.',
+      command: 'npx expo install @apexnative/keychain',
+      to: '#expo',
+    },
+  ]}
+/>
+
+## A bare app {#bare}
+
+Add the package:
+
+<PackageInstall />
+
+Install the pods:
+
+```bash title="Terminal"
+cd ios && pod install
+```
+
+The pod links `Security` and `LocalAuthentication`, which are part of the iOS SDK. On Android the package brings `androidx.biometric` 1.1.0 as its own Gradle dependency, and the prompt uses the app's `ReactActivity`; there is nothing to add to the manifest.
+
+### Face ID description {#face-id}
+
+If any item uses an `accessControl` with biometrics, iOS needs to tell the user why the app asks for Face ID. Add `NSFaceIDUsageDescription` to `ios/<App>/Info.plist`:
+
+```xml title="Info.plist"
+<key>NSFaceIDUsageDescription</key>
+<string>Face ID unlocks your account without a password.</string>
+```
+
+Without it, on a device with Face ID, a write or a read of an item with biometrics, and `canUseAccessControl` for it, fail with `MISSING_USAGE_DESCRIPTION` instead of crashing the app.
+
+### Optional settings {#optional}
+
+| Setting | Where | What it does |
+| --- | --- | --- |
+| `ApexKeychainClearOnReinstall` = `YES` | `Info.plist` | Removes the package's items on the first run after a reinstall. See [Reinstalls](../guides/reinstall). |
+| Keychain Sharing capability | Xcode, Signing & Capabilities | Adds the `keychain-access-groups` entitlement that an `accessGroup` needs. See [Sharing between apps](../guides/sharing-between-apps). |
+
+Rebuild the app after changing `Info.plist` or the entitlements:
+
+```bash title="Terminal"
+npx react-native run-ios
+npx react-native run-android
+```
+
+## An Expo app {#expo}
+
+Add the package:
+
+```bash title="Terminal"
+npx expo install @apexnative/keychain
+```
+
+Add the config plugin to `app.json`. On prebuild it writes `NSFaceIDUsageDescription`, and, when you ask for them, `ApexKeychainClearOnReinstall` and the `keychain-access-groups` entitlement; Android needs nothing.
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [
+      [
+        "@apexnative/keychain",
+        {
+          "faceIDPermission": "Face ID unlocks your account without a password.",
+          "clearOnReinstall": true,
+          "accessGroups": ["com.example.shared"]
+        }
+      ]
+    ]
+  }
+}
+```
+
+Every option is optional. Without `faceIDPermission`, the plugin writes a default Face ID text; `accessGroups` take the group without the team prefix, which the plugin adds. [Config plugin](/api/plugin) has every option. Then build the app with its native code:
+
+```bash title="Terminal"
+npx expo prebuild
+npx expo run:ios
+npx expo run:android
+```
+
+EAS Build runs prebuild for you: `eas build` with the plugin in `app.json` is enough.
+
+### Expo Go {#expo-go}
+
+Expo Go ships with a fixed set of native modules, and this package isn't one of them. In Expo Go the import works, and the first call throws `UNSUPPORTED` with a message that says a development build is needed, rather than `Cannot read property … of null`. Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/).
+
+## Check the setup {#check}
+
+A round trip through the default keychain shows that the native module is linked:
+
+```ts title="App.tsx"
+import { AccessControl, canUseAccessControl, keychain } from '@apexnative/keychain';
+
+await keychain.setItem('setup-check', 'ok');
+console.log(await keychain.getItem('setup-check')); // 'ok'
+await keychain.removeItem('setup-check');
+
+// Whether this device can lock an item behind the biometrics enrolled today.
+console.log(await canUseAccessControl(AccessControl.BiometryCurrentSet));
+// { available: true } or { available: false, reason: 'notEnrolled' }
+```
+
+## Tests and the web {#tests-and-web}
+
+On the web every method throws `UNSUPPORTED`: browsers have no keychain to put a secret in. For Jest, the package has an in-memory mock with the same validation at `@apexnative/keychain/jest`; [Testing](../guides/testing) sets it up.

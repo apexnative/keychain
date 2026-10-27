@@ -1,0 +1,153 @@
+---
+title: Types of migration
+sidebar_label: Types
+description: 'The report of a migration, the reasons an item is skipped, what an item becomes, how to name one old item, and the options of each function.'
+hide_title: true
+---
+
+import { ApiHeader, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Types" importName="type MigrationReport, type MigrationItem" from="@apexnative/keychain/migrate" />
+
+`@apexnative/keychain/migrate` also exports `KeychainError`, `KeychainErrorCode` and `isKeychainError`, the same as the main entry point, to check the errors of a report without a second import.
+
+## MigrationReport {#migrationreport}
+
+```ts
+type MigrationReport = {
+  migrated: string[];
+  skipped: SkippedItem[];
+  warnings: Array<{ key: string; kind: MigrationKind; error: KeychainError }>;
+};
+```
+
+What a migration did, item by item. Every item it found is in `migrated` or in `skipped`.
+
+<Params
+  label="Field"
+  items={[
+    { name: 'migrated', type: 'string[]', required: true, text: 'The keys of the items written to this package: the service or the server for react-native-keychain, the key for expo-secure-store.' },
+    { name: 'skipped', type: 'SkippedItem[]', required: true, text: 'The items not moved, each with its reason. See [SkippedItem](#skippeditem).' },
+    { name: 'warnings', type: 'Array<{ key, kind, error }>', required: true, text: 'Items that were written, and whose old item couldn\'t be removed or marked as moved: the data is safe in this package, the old item stays, and the next run skips it as `exists`.' },
+  ]}
+/>
+
+## SkippedItem {#skippeditem}
+
+```ts
+type SkippedItem = {
+  key: string;
+  kind: MigrationKind;
+  reason: SkipReason;
+  error?: KeychainError;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'key', type: 'string', required: true, text: 'react-native-keychain: the service or the server. expo-secure-store: the key.' },
+    { name: 'kind', type: 'MigrationKind', required: true, text: 'What the item would have become. See [MigrationKind](#migrationkind).' },
+    { name: 'reason', type: 'SkipReason', required: true, text: 'Why it wasn\'t moved. See [SkipReason](#skipreason).' },
+    { name: 'error', type: 'KeychainError', text: 'For `reason: \'error\'`: what failed. A canceled prompt of `migrateItem` is `USER_CANCELED`.' },
+  ]}
+/>
+
+## SkipReason {#skipreason}
+
+```ts
+type SkipReason = 'requiresAuth' | 'notFound' | 'exists' | 'error';
+```
+
+| Reason | Means |
+| --- | --- |
+| `'requiresAuth'` | The old item is protected, and `migrateFrom…` never shows a prompt. [`migrateItem`](./migrateItem) moves it |
+| `'notFound'` | The old item is gone, or has no value |
+| `'exists'` | The key is taken in this package, and nothing is overwritten; or an earlier run moved the item and kept it |
+| `'error'` | Reading or writing failed; `error` says how |
+
+## MigrationKind {#migrationkind}
+
+```ts
+type MigrationKind = 'genericPassword' | 'internetPassword' | 'secureStore';
+```
+
+| Kind | The old item | Becomes |
+| --- | --- | --- |
+| `'genericPassword'` | A generic password of react-native-keychain | The credentials of the storage whose service is the password's |
+| `'internetPassword'` | Internet credentials of react-native-keychain | The credentials of `into` with `server` |
+| `'secureStore'` | An item of expo-secure-store | The item with the same key in `into` |
+
+## MigrationItem {#migrationitem}
+
+```ts
+type MigrationItem =
+  | { library: 'reactNativeKeychain'; service?: string; server?: undefined }
+  | { library: 'reactNativeKeychain'; server: string; service?: undefined }
+  | { library: 'expoSecureStore'; key: string; keychainService?: string };
+```
+
+One old item, for [`migrateItem`](./migrateItem).
+
+| Item | Names |
+| --- | --- |
+| `{ library: 'reactNativeKeychain' }` | The generic password of rnk's default service |
+| `{ library: 'reactNativeKeychain', service: 'auth' }` | The generic password of the service `auth` |
+| `{ library: 'reactNativeKeychain', server: 'api.example.com' }` | The internet credentials of the server |
+| `{ library: 'expoSecureStore', key: 'token' }` | The item `token` of expo-secure-store's default service: `app` on iOS, `key_v1` on Android |
+| `{ library: 'expoSecureStore', key: 'token', keychainService: 'auth' }` | The item `token` of the `keychainService` `auth` |
+
+Both `service` and `server` at once is `INVALID_ARGUMENT`.
+
+## MigrateFromReactNativeKeychainOptions {#migratefromreactnativekeychainoptions}
+
+```ts
+type MigrateFromReactNativeKeychainOptions = {
+  services?: readonly string[];
+  servers?: readonly string[];
+  into?: Keychain;
+  removeSource?: boolean;
+  accessGroup?: string;
+};
+```
+
+The options of [`migrateFromReactNativeKeychain`](./migrateFromReactNativeKeychain#parameters), explained there.
+
+## MigrateFromExpoSecureStoreOptions {#migratefromexposecurestoreoptions}
+
+```ts
+type MigrateFromExpoSecureStoreOptions = {
+  keychainService?: string | readonly string[];
+  into?: Keychain;
+  removeSource?: boolean;
+  accessGroup?: string;
+};
+```
+
+The options of [`migrateFromExpoSecureStore`](./migrateFromExpoSecureStore#parameters), explained there.
+
+## MigrateItemOptions {#migrateitemoptions}
+
+```ts
+type MigrateItemOptions = {
+  prompt?: Prompt;
+  setOptions?: Omit<SetOptions, 'label'>;
+  into?: Keychain;
+  removeSource?: boolean;
+  accessGroup?: string;
+};
+```
+
+The options of [`migrateItem`](./migrateItem#parameters), explained there.
+
+An option name that isn't one of a function's is `INVALID_ARGUMENT`, as in the rest of the package.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'migrateFromReactNativeKeychain', text: 'Moves rnk\'s items.', to: '/api/migrate/migrateFromReactNativeKeychain' },
+    { name: 'migrateFromExpoSecureStore', text: 'Moves expo-secure-store\'s items.', to: '/api/migrate/migrateFromExpoSecureStore' },
+    { name: 'migrateItem', text: 'Moves one item, with a prompt.', to: '/api/migrate/migrateItem' },
+  ]}
+/>

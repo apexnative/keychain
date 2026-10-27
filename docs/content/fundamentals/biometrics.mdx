@@ -1,0 +1,128 @@
+---
+title: How biometrics works
+description: 'Biometrics in the package is a lock on a stored value, checked by the operating system. What a write and a read do, what the device can tell you, and what happens when the enrolled biometrics change.'
+---
+
+import { Mark, Pair, Thesis } from '@site/src/components/Intro';
+
+The package has no `authenticate()` that shows Face ID and answers `true`. Biometrics is a property of an item: the item's value is encrypted with a key that the operating system uses only after the user passes the prompt.
+
+## A lock on the value {#lock}
+
+- **Write.** `setItem(key, value, { accessControl: AccessControl.BiometryCurrentSet })` shows no prompt. The system encrypts the value with a key that can be used only after Face ID, Touch ID or a fingerprint.
+- **Read.** `getItem(key)` makes the operating system show its prompt: the Keychain on iOS, `BiometricPrompt` with a Keystore key on Android. On success the value comes back; on a cancel or a failure, a `KeychainError` (`USER_CANCELED`, `LOCKOUT`, …).
+- **The result of the scan never reaches JavaScript.** The check runs inside the Secure Enclave or the TEE, and only the decrypted secret comes out.
+
+<Thesis>
+  Without the user's face or finger, the value <Mark>can't be decrypted</Mark>, whatever the app's code says.
+</Thesis>
+
+<Pair left="A check in the app" right="A lock on the value">
+
+```ts
+// The token sits unprotected; a boolean guards it.
+const ok = await authenticate('Unlock');
+if (ok) {
+  const token = await storage.get('refreshToken');
+}
+```
+
+```ts
+// The token is encrypted with a key that needs the user.
+const token = await vault.getItem('refreshToken');
+// The prompt, then the value or a KeychainError.
+```
+
+</Pair>
+
+On a jailbroken or rooted device, the boolean of the left side can be patched to `true`, and the token has been readable all along. On the right, there is no answer to patch: the key that decrypts the token stays locked in hardware until the user passes the prompt.
+
+## No separate Face ID module {#no-module}
+
+The prompt is part of the system APIs the package already uses. On iOS it comes from the Keychain itself (`Security` and `LocalAuthentication`, both in the iOS SDK); on Android from `BiometricPrompt` of `androidx.biometric`, which the package brings as its Gradle dependency.
+
+The app needs only `NSFaceIDUsageDescription` in `Info.plist` ([Installation](../start/installation#face-id); the Expo config plugin adds it). Without it, on a device with Face ID, a write or a read of an item with biometrics, and `canUseAccessControl` for it, fail with `MISSING_USAGE_DESCRIPTION`: a mistake in the app's setup is loud, not a crash.
+
+You need `expo-local-authentication` or `react-native-biometrics` only to show Face ID without a secret, for example to confirm an action. This package doesn't do that and won't: a prompt without a secret is UI, not protection of data.
+
+## What the device can do {#device}
+
+These functions don't touch the keychain and never show a prompt:
+
+```ts
+import {
+  AccessControl,
+  canUseAccessControl,
+  getBiometryState,
+  getBiometryTypes,
+  getHardwareSecurityLevel,
+  isPasscodeSet,
+} from '@apexnative/keychain';
+
+await getBiometryTypes(); // ['faceID'] on an iPhone, ['fingerprint', 'face'] on some Android phones
+await canUseAccessControl(AccessControl.BiometryCurrentSet); // { available: true } | { available: false, reason }
+await isPasscodeSet(); // true
+await getBiometryState(); // an opaque token, or null
+await getHardwareSecurityLevel(); // 'strongbox' | 'tee' | 'software' on Android, null on iOS
+```
+
+**Why `getBiometryTypes` is an array.** Android doesn't tell an app which modality `BiometricPrompt` will offer: a phone with a fingerprint sensor and a face sensor may show either. The array has the device's sensors, enrolled or not, when it has biometrics that can unlock a key (Class 3): on iOS one of `faceID`, `touchID`, `opticID`; on Android any of `fingerprint`, `face`, `iris`. Name the feature by what the array holds ("Face ID", or "biometrics" when there are several).
+
+**`canUseAccessControl`** answers for one `accessControl` value, with the reason when it can't be used:
+
+| Reason | Means |
+| --- | --- |
+| `unsupportedOS` | The option needs a newer OS: a passcode option on Android 7–10 |
+| `noHardware` | No sensor, or none that can unlock a key |
+| `passcodeNotSet` | No screen lock, which every option with authentication needs |
+| `notEnrolled` | A sensor, but no face or finger enrolled; also for `biometryCurrentSetOrPasscode`, which the passcode doesn't make up for |
+
+When several are true, the reason is the first of the table. A temporary lockout after failed scans isn't a reason: the item can still be written, so the answer is `available`, and a read meets the lockout as `LOCKOUT`.
+
+**`getBiometryState`** returns an opaque string that changes when the enrolled biometrics change, or `null` without enrolled biometrics. Keep it to notice a change before a read fails: for example, to explain why the user has to sign in again. [getBiometryState](/api/device/getBiometryState) has the details of each platform.
+
+## When the biometrics change {#invalidation}
+
+An item with `biometryCurrentSet` or `biometryCurrentSetOrPasscode` belongs to the biometrics enrolled when it was written. After a change, such as a new fingerprint or a new face, the next read throws `KEY_INVALIDATED`, and the item is removed.
+
+```ts
+try {
+  token = await vault.getItem('refreshToken');
+} catch (error) {
+  if (error instanceof KeychainError && error.code === KeychainErrorCode.KeyInvalidated) {
+    // The item is gone. Ask the user to sign in, then store it again.
+  }
+}
+```
+
+| | How the change is noticed |
+| --- | --- |
+| iOS | The item keeps the biometric domain state of the moment it was written. A read compares it with the current one; a different state is `KEY_INVALIDATED`, whatever status the Keychain returns. The state is compared only within one major version of iOS, whose updates may change Apple's hash. |
+| Android | The Keystore key is made with `setInvalidatedByBiometricEnrollment(true)`; the system invalidates it, and a read gets `KeyPermanentlyInvalidatedException`. Before a write the package checks the key without a prompt and makes a new one if it is dead, so a write never stores a value that can't be read. |
+
+An invalidated item never reads as `null`: an app must be able to tell "never stored" from "lost, sign in again".
+
+## One prompt at a time {#queue}
+
+Prompts wait in one queue, on both platforms: one prompt is on screen, the next reads wait for it, in the order they asked. Reads of items without authentication don't enter the queue and never wait for a prompt. A read whose turn comes inside an open [`authValidity`](./protection#auth-validity) window needs no prompt of its own.
+
+On Android a prompt needs an activity to show in: the app's `ReactActivity`. Without one the read throws `NO_ACTIVITY`. When the app goes to the background, the waiting reads end with `SYSTEM_CANCELED`.
+
+## How a prompt ends {#outcomes}
+
+| Code | When |
+| --- | --- |
+| `USER_CANCELED` | The user tapped Cancel (or the `cancel` button of the prompt). On Android 16, also a prompt that was open when the app went to the background: Android reports it as the user's cancel |
+| `USER_FALLBACK` | iOS: the user tapped the fallback button of a prompt for biometrics alone (`biometryAny`, `biometryCurrentSet`); `prompt.fallback` sets its text, `''` hides it |
+| `SYSTEM_CANCELED` | The system closed the prompt: the app went to the background, a call came in |
+| `AUTH_FAILED` | iOS: the face or finger wasn't recognized. Android keeps the prompt open after a failed attempt |
+| `LOCKOUT` | Too many failed attempts; biometrics is locked for now |
+| `LOCKOUT_PERMANENT` | Android: biometrics is locked until the user enters the passcode |
+
+On Android 15 and newer, a lockout can be lifted with the PIN inside the prompt; the package then shows the prompt once more by itself, so the read can still end with the value.
+
+[Errors](./errors) covers the rest of the codes.
+
+## Reading several items {#batch}
+
+A later release is planned to add `getItems(keys)`, which reads several items with one prompt. On iOS that always works: one `LAContext` for the batch. On Android it works only for items written with `authValidity > 0`; a key that needs authentication for every use needs it for every item, which is a rule of the Keystore. Until then, `authValidity` gives one prompt for several reads ([Protection](./protection#auth-validity)).

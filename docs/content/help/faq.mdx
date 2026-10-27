@@ -1,0 +1,78 @@
+---
+title: FAQ
+description: 'Expo Go, biometrics on simulators and emulators, face unlock on Android, reads in the background, reinstalls, restores, and other common questions.'
+---
+
+## Does it work in Expo Go? {#expo-go}
+
+No. Expo Go contains a fixed set of native modules, and this package isn't one of them. Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/): in Expo Go the import works, and the first call throws `UNSUPPORTED` with a message that says so. See [Installation](../start/installation#expo).
+
+## How do I test Face ID on the iOS simulator? {#ios-simulator}
+
+In the Simulator's menu, *Features → Face ID → Enrolled*. When the prompt is on screen, *Features → Face ID → Matching Face* passes it and *Non-matching Face* fails it. A simulator of a Touch ID device has the same items under *Touch ID*. In Detox, `device.matchFace()` and `device.unmatchFace()` do the same ([Testing](../guides/testing#e2e)).
+
+## And a fingerprint on the Android emulator? {#android-emulator}
+
+Set a screen lock (a PIN) in the emulator's settings, then add a fingerprint under *Security*; when the emulator asks to touch the sensor, run `adb -e emu finger touch 1`. The same command passes a prompt later. The emulator's extended controls (*…* → *Fingerprint*) have a button for it too.
+
+## Why is face unlock not offered on my Android phone? {#android-face}
+
+On Android, only Class 3 (strong) biometrics can unlock a Keystore key. Face unlock on most Android phones is Class 2, so it can't protect an item, and the prompt offers the fingerprint sensor. Android doesn't say the class of each sensor, so `getBiometryTypes()` may still list `'face'` on such a phone: it lists the sensors of a device that has strong biometrics at all.
+
+## Why does getBiometryTypes return an array? {#biometry-types}
+
+Android doesn't tell an app which modality `BiometricPrompt` will use: a phone with a fingerprint sensor and a face sensor may show either. The array lists the device's modalities, enrolled or not. On iOS it has one entry at most.
+
+## Why does a passcode option fail on Android 10? {#android-passcode}
+
+Before Android 11 (API 30), the device credential can't unlock a key through a `CryptoObject`. The options with a passcode throw `UNSUPPORTED` on API 24–29, and `canUseAccessControl` answers `unsupportedOS`; so does a write with `authValidity` above 0. Use `biometryAny` or `biometryCurrentSet` on those versions.
+
+## Why does a read fail in the background? {#background}
+
+The item was written with `accessible: 'whenUnlocked'` (or `…ThisDeviceOnly`), and the device is locked: the read throws `INTERACTION_NOT_ALLOWED`. Items that background work needs should use `afterFirstUnlock`, the default.
+
+## Do items survive a reinstall? {#reinstall}
+
+On iOS, yes, unless you turn on [`clearOnReinstall`](../guides/reinstall), which removes the package's items on the first run of a new installation; items in iCloud Keychain and in shared access groups stay even then. On Android, no: the app's files and its Keystore keys are deleted with it.
+
+## Are items restored from a backup? {#backup}
+
+On Android, no, by design: the files are kept out of backups, because Keystore keys never move to a new device and a restored ciphertext could never be decrypted. On iOS, items without `ThisDeviceOnly` come back with an encrypted backup restored by the system; `ThisDeviceOnly` items don't.
+
+## Why doesn't getItem find what react-native-keychain stored? {#other-libraries}
+
+The package sees only its own items. On iOS its queries are limited to its own mark, so the items of `react-native-keychain` or `expo-secure-store` stay out of sight even under the same service: `getItem` returns `null`, `getAllKeys` doesn't list them, and `clear` doesn't remove them. Move them with the migration: [From react-native-keychain](../migration/from-react-native-keychain#data), [From expo-secure-store](../migration/from-expo-secure-store#data).
+
+## Why is a string with U+0000 rejected? {#nul}
+
+React Native cuts a string at its first U+0000 on the way to the native side, so the value would come back shorter than it was stored. Rather than lose part of it silently, `setItem`, `setItemSync` and `setCredentials` throw `INVALID_ARGUMENT` for a string with U+0000, and so does a `label` with one. Binary data, U+0000 included, goes in bytes: `setBytes` and `getBytes`.
+
+## Is an empty label the same as no label? {#empty-label}
+
+No. `''` is a label: `getItemInfo` reports `label: ''`. Without a label, `label` isn't in the result at all. A write without `label` removes the item's label.
+
+## When is the result null, and when is it an error? {#null}
+
+`null` means only one thing: nothing is stored under the key. An item that exists but can't be read is a `KeychainError`: `USER_CANCELED`, `LOCKOUT`, `KEY_INVALIDATED` and the others in [Error codes](./error-codes).
+
+## Can I show Face ID without storing a secret? {#authenticate}
+
+Not with this package. A prompt without a secret is UI, not protection: the result is a boolean in JavaScript that a compromised device can change. To confirm an action with Face ID, use `expo-local-authentication` or `react-native-biometrics`; to protect a value, put the value behind `accessControl` ([How biometrics works](../fundamentals/biometrics)).
+
+## How large can a value be? {#size}
+
+There is no hard limit, but the Keychain and the Keystore are made for small secrets: keep values to tens of kilobytes. For large data, encrypt a file and keep its key here ([A key for MMKV or SQLCipher](../guides/encryption-key)).
+
+## Does it support the old architecture? {#old-architecture}
+
+No. The package is a TurboModule for the New Architecture, on React Native 0.80 and newer.
+
+## Does it work on the web, tvOS or macOS? {#platforms}
+
+- **Web:** every method throws `UNSUPPORTED`; use the Jest mock for tests.
+- **iPadOS and Mac Catalyst:** yes, as iOS.
+- **tvOS, visionOS and macOS:** the pod declares iOS only for now. An iPad app runs on Apple Vision Pro as an iPad app, where `getBiometryTypes` reports `'opticID'`.
+
+## Is the package published? {#published}
+
+Not yet: it is in development, and these pages describe the API agreed for 1.0. Follow [the repository](https://github.com/apexnative/keychain) for releases.

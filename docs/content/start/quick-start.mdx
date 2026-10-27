@@ -1,0 +1,127 @@
+---
+title: Quick start
+description: 'Keep a token, lock a refresh token behind Face ID, handle the errors a prompt can end with, and read at startup without waiting.'
+---
+
+import { Steps } from '@site/src/components/Intro';
+
+This page builds the storage of a typical sign-in: an access token that the app reads at any time, and a refresh token that only comes out after Face ID or a fingerprint. It assumes the package is [installed](./installation).
+
+<Steps
+  items={[
+    { text: 'Keep the access token in the default keychain.', code: 'keychain.setItem' },
+    { text: 'Make a vault that opens with biometrics.', code: 'createKeychain' },
+    { text: 'Read from the vault and handle how the prompt ends.', code: 'KeychainError' },
+    { text: 'Read the access token at startup, without a promise.', code: 'getItemSync' },
+  ]}
+/>
+
+## 1. Keep a token {#token}
+
+`keychain` is the default storage: its service is the app's bundle id on iOS and its `applicationId` on Android. A value is a string, a key is any non-empty string of up to 256 characters.
+
+```ts title="src/session.ts"
+import { keychain } from '@apexnative/keychain';
+
+export async function saveSession(accessToken: string) {
+  await keychain.setItem('accessToken', accessToken);
+}
+
+export async function loadSession(): Promise<string | null> {
+  return keychain.getItem('accessToken'); // null when nothing is stored
+}
+
+export async function signOut() {
+  await keychain.removeItem('accessToken');
+}
+```
+
+The item uses the defaults: `Accessible.AfterFirstUnlock`, so a background refresh can read it once the phone has been unlocked after a restart, and `AccessControl.None`, so no prompt.
+
+## 2. Make a vault {#vault}
+
+`createKeychain` gives a storage of its own service, with defaults for every item in it. Here every item needs the biometrics enrolled on the device today:
+
+```ts title="src/vault.ts"
+import { AccessControl, Accessible, createKeychain } from '@apexnative/keychain';
+
+export const vault = createKeychain({
+  service: 'vault',
+  accessible: Accessible.WhenUnlockedThisDeviceOnly,
+  accessControl: AccessControl.BiometryCurrentSet,
+  prompt: { title: 'Unlock your account', cancel: 'Use password' },
+});
+```
+
+Before offering Face ID in the UI, ask whether the device can lock an item this way. The check shows nothing to the user:
+
+```ts title="src/vault.ts"
+import { AccessControl, canUseAccessControl } from '@apexnative/keychain';
+
+const check = await canUseAccessControl(AccessControl.BiometryCurrentSet);
+if (!check.available) {
+  // 'unsupportedOS' | 'noHardware' | 'passcodeNotSet' | 'notEnrolled'
+  hideBiometricSignIn(check.reason);
+}
+```
+
+Writing to the vault shows no prompt, on iOS and on Android:
+
+```ts
+await vault.setItem('refreshToken', refreshToken);
+```
+
+If the device has no biometrics enrolled when you write, `setItem` throws `BIOMETRY_NOT_ENROLLED`. The value is never stored with weaker protection.
+
+## 3. Read from the vault {#read}
+
+Reading shows the system prompt. Its outcome is either the value or a `KeychainError` with a code:
+
+```ts title="src/vault.ts"
+import { KeychainError, KeychainErrorCode } from '@apexnative/keychain';
+
+export async function unlock(): Promise<string | null> {
+  try {
+    return await vault.getItem('refreshToken');
+  } catch (error) {
+    if (!(error instanceof KeychainError)) throw error;
+    switch (error.code) {
+      case KeychainErrorCode.UserCanceled: // the user chose "Use password"
+      case KeychainErrorCode.Lockout: // too many failed attempts for now
+        return null;
+      case KeychainErrorCode.KeyInvalidated: // the biometrics changed: the item is gone
+        await signOut();
+        return null;
+      default:
+        throw error;
+    }
+  }
+}
+```
+
+`null` from `getItem` always means that nothing is stored under the key. A lost item is `KEY_INVALIDATED`, never a quiet `null`: the app knows that it has to ask the user to sign in again. [Errors](../fundamentals/errors) lists every code.
+
+## 4. Read at startup {#startup}
+
+An item without `accessControl` can be read synchronously, on the JS thread, before the first render:
+
+```tsx title="App.tsx"
+import { keychain } from '@apexnative/keychain';
+import { useState } from 'react';
+
+// Read once, when the module loads: no promise and no loading state.
+const initialToken = keychain.getItemSync('accessToken');
+
+export function App() {
+  const [token, setToken] = useState(initialToken);
+  return token ? <Home /> : <SignIn onSignIn={setToken} />;
+}
+```
+
+The sync methods never show a prompt. Called on an item that needs one, they throw `AUTH_REQUIRED` instead of blocking the JS thread; see [Synchronous API](../fundamentals/sync-api).
+
+## Next {#next}
+
+- [Storage model](../fundamentals/storage-model): services, bytes, labels and credentials.
+- [Protection](../fundamentals/protection): every option of `accessible` and `accessControl`.
+- [Sign-in with Face ID](../guides/biometric-sign-in): the whole flow, with SSO, the fallback and the rotation of the refresh token.

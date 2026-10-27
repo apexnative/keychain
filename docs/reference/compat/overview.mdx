@@ -1,0 +1,152 @@
+---
+title: '@apexnative/keychain/compat'
+description: 'The functions and constants of react-native-keychain 10 over this package: change the import, keep the calls, and the items get the protection and the errors of the core.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Overview" />
+
+`@apexnative/keychain/compat` is the API of `react-native-keychain` 10 with the same names and signatures: `setGenericPassword`, `getInternetCredentials`, `ACCESS_CONTROL.BIOMETRY_ANY` and the rest. Each function is a short call to the core of this package. An app that used rnk changes its import and keeps its code; new code uses the core API.
+
+## Usage {#usage}
+
+Both forms of rnk's import work:
+
+```ts title="src/auth/storage.ts"
+import * as Keychain from '@apexnative/keychain/compat';
+// or: import Keychain from '@apexnative/keychain/compat';
+
+await Keychain.setGenericPassword('ivan@example.com', token, {
+  accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET,
+  accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+});
+
+const credentials = await Keychain.getGenericPassword({
+  authenticationPrompt: { title: 'Sign in to Example' },
+});
+if (credentials) signIn(credentials.username, credentials.password);
+```
+
+Named imports work too: `import { getGenericPassword, ACCESSIBLE } from '@apexnative/keychain/compat'`.
+
+The layer reads and writes **this package's items, not rnk's**. After the switch, `getGenericPassword` doesn't see what rnk stored until that data is moved: run [`migrateFromReactNativeKeychain`](/api/migrate/migrateFromReactNativeKeychain) once, at launch, before the first read. [From react-native-keychain](/docs/migration/from-react-native-keychain) walks through both steps.
+
+## Where the items go {#items}
+
+There are no items of a separate format: a password from the layer is the credentials of the core, readable by [`getCredentials`](/api/storage/methods#getCredentials).
+
+| rnk | In this package |
+| --- | --- |
+| A generic password of the app's default service (no `service`) | The credentials of the default store, [`keychain`](/api/storage/keychain): the item `credentials`, the user name its label |
+| A generic password of the service `S` | The credentials of the store `createKeychain({ service: 'S' })` |
+| Internet credentials of the server `X` | The credentials with `server: 'X'` in the default store: the item `credentials:X` |
+| The same with `accessGroup` | The same, in the store of that access group |
+
+The app's default service is the bundle identifier on iOS and the `applicationId` on Android. Naming it as `service` is the same as leaving `service` out.
+
+So the two APIs can share data during a move: an item written by `setGenericPassword` reads back with `keychain.getCredentials()`, and the other way round.
+
+```ts
+import { keychain } from '@apexnative/keychain';
+import * as Keychain from '@apexnative/keychain/compat';
+
+await Keychain.setGenericPassword('ivan', 'secret');
+await keychain.getCredentials(); // { username: 'ivan', password: 'secret' }
+await keychain.getItemInfo('credentials'); // { key: 'credentials', label: 'ivan', … }
+```
+
+**The list of services.** The package can't list every store on the device, so [`getAllGenericPasswordServices`](./generic-passwords#getAllGenericPasswordServices) reads a list of its own: the item `generic-services` in the store `apexnative.keychain.compat`. `setGenericPassword` and `migrate` add a service to it, and `resetGenericPassword` removes it. The default service is never in the list, and the default store gets no item of it.
+
+## Options and checks {#options}
+
+The options of rnk are mapped to the core's: `accessible` and `accessControl` to their [constants](./constants), `cloudSync` to [`synchronizable`](/api/options/KeychainOptions#synchronizable), `accessGroup` to the [access group](/api/options/KeychainOptions#access-group) of the store, `authenticationPrompt` to the [prompt](/api/options/KeychainOptions#prompt) of the read. Then the core checks them as it checks its own calls:
+
+- `cloudSync: true` with an `accessControl`, or with a `…THIS_DEVICE_ONLY` `accessible`, is `INVALID_ARGUMENT`: iCloud Keychain syncs no such item.
+- An empty user name, a string with U+0000, an empty `service` or an unknown `accessible` is `INVALID_ARGUMENT`.
+- An access control the device can't do fails the write (`BIOMETRY_NOT_ENROLLED`, `PASSCODE_NOT_SET`, …). The item is never stored with less protection.
+
+Options that rnk has dropped, or never had (`showModal`, `kLocalizedFallbackTitle`, `rules`, …), are ignored, as rnk ignores them. A read without `authenticationPrompt` shows rnk's own texts: the title `Authenticate to retrieve secret` and the button `Cancel`.
+
+## Errors {#errors}
+
+Every failure is a [`KeychainError`](/api/errors/KeychainError) with a [`code`](/api/errors/KeychainErrorCode), where rnk threw plain errors whose message said what happened. A canceled prompt is `USER_CANCELED`, a new enrollment is `KEY_INVALIDATED`, and so on: the code is the way to tell them apart.
+
+```ts
+import * as Keychain from '@apexnative/keychain/compat';
+import { KeychainErrorCode, isKeychainError } from '@apexnative/keychain/compat';
+
+export async function unlock() {
+  try {
+    return await Keychain.getGenericPassword(); // UserCredentials or false
+  } catch (error) {
+    if (isKeychainError(error, KeychainErrorCode.UserCanceled)) return false; // show the password form
+    throw error;
+  }
+}
+```
+
+`KeychainError`, `KeychainErrorCode` and `isKeychainError` are exported from `/compat` as well, so the error handling needs no second import. [Error codes](/docs/help/error-codes) says what each code means and what to do.
+
+## What isn't here {#unsupported}
+
+What rnk takes and this package doesn't do is refused, with `UNSUPPORTED` and a message that names it, instead of being ignored. Nothing is written in that case.
+
+| rnk | Here |
+| --- | --- |
+| `requestSharedWebCredentials`, `setSharedWebCredentials` | `UNSUPPORTED`: see below |
+| The `storage` option, any `STORAGE_TYPE` | `UNSUPPORTED`: the package chooses its cipher, AES-GCM in the Android Keystore |
+| `ACCESSIBLE.ALWAYS` | `UNSUPPORTED`: deprecated by iOS; use `AFTER_FIRST_UNLOCK` |
+| `ACCESS_CONTROL.APPLICATION_PASSWORD` | `UNSUPPORTED`, on writes and on reads: use a biometry, the passcode, or both |
+
+### requestSharedWebCredentials {#requestSharedWebCredentials}
+
+```ts
+function requestSharedWebCredentials(): Promise<never>;
+```
+
+<Facts returns="Promise<never>" throws="Always `UNSUPPORTED`" />
+
+Shared web credentials are an iOS service of rnk with no counterpart in this package. Use the system's Password AutoFill (AuthenticationServices on iOS, Credential Manager on Android), or a password manager.
+
+### setSharedWebCredentials {#setSharedWebCredentials}
+
+```ts
+function setSharedWebCredentials(server: string, username: string, password?: string): Promise<never>;
+```
+
+<Facts returns="Promise<never>" throws="Always `UNSUPPORTED`" />
+
+The same: it rejects at once and stores nothing.
+
+## Every function {#functions}
+
+| rnk | The core call it makes |
+| --- | --- |
+| [`setGenericPassword(username, password, options)`](./generic-passwords#setGenericPassword) | `setCredentials({ username, password }, options)` in the store of `service` |
+| [`getGenericPassword(options)`](./generic-passwords#getGenericPassword) | `getCredentials({ prompt })` in the store of `service` |
+| [`hasGenericPassword(options)`](./generic-passwords#hasGenericPassword) | `hasItem('credentials')` in the store of `service` |
+| [`resetGenericPassword(options)`](./generic-passwords#resetGenericPassword) | `removeCredentials()` in the store of `service` |
+| [`getAllGenericPasswordServices()`](./generic-passwords#getAllGenericPasswordServices) | `hasItem('credentials')` in the default store and in each listed store |
+| [`setInternetCredentials(server, username, password, options)`](./internet-credentials#setInternetCredentials) | `setCredentials({ username, password }, { server, … })` |
+| [`getInternetCredentials(server, options)`](./internet-credentials#getInternetCredentials) | `getCredentials({ server, prompt })` |
+| [`hasInternetCredentials(server)`](./internet-credentials#hasInternetCredentials) | `hasItem('credentials:' + server)` |
+| [`resetInternetCredentials(server)`](./internet-credentials#resetInternetCredentials) | `removeCredentials({ server })` |
+| [`getSupportedBiometryType()`](./device#getSupportedBiometryType) | `getBiometryTypes()` and `getBiometryState()` |
+| [`canImplyAuthentication(options)`](./device#canImplyAuthentication) | `getBiometryState()` and `isPasscodeSet()` |
+| [`getSecurityLevel(options)`](./device#getSecurityLevel) | `getHardwareSecurityLevel()` |
+| [`isPasscodeAuthAvailable()`](./device#isPasscodeAuthAvailable) | `isPasscodeSet()` |
+
+The core's calls don't show a prompt unless the table names a read: only `getGenericPassword` and `getInternetCredentials` of a protected item do.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'From react-native-keychain', text: 'Move the data with `migrate`, then switch the calls to `/compat` or to the core.', to: '/docs/migration/from-react-native-keychain#compat' },
+    { name: 'Generic passwords', text: '`setGenericPassword` and the rest, one by one.', to: '/api/compat/generic-passwords' },
+    { name: 'Constants', text: 'rnk\'s constants and what each means here.', to: '/api/compat/constants' },
+    { name: 'Keychain', text: 'The core API the layer calls.', to: '/api/storage/methods' },
+  ]}
+/>

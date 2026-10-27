@@ -1,0 +1,55 @@
+---
+title: isKeychainError
+description: 'Whether a value is a KeychainError, and, with a code, one with that code. A type guard: after it, TypeScript knows the error''s code and native details.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="isKeychainError" />
+
+## Usage {#usage}
+
+```ts
+import { isKeychainError, KeychainErrorCode } from '@apexnative/keychain';
+
+try {
+  await vault.getItem('refreshToken');
+} catch (error) {
+  if (isKeychainError(error, KeychainErrorCode.KeyInvalidated)) return signInAgain();
+  if (isKeychainError(error)) log(error.code, error.nativeCode);
+  throw error;
+}
+```
+
+## Signature {#signature}
+
+```ts
+function isKeychainError(error: unknown, code?: KeychainErrorCode): error is KeychainError;
+```
+
+<Facts returns="boolean" />
+
+### Parameters {#parameters}
+
+<Params
+  items={[
+    { name: 'error', type: 'unknown', required: true, text: 'What a `catch` caught.' },
+    { name: 'code', type: 'KeychainErrorCode', text: 'A code to match: a constant, `KeychainErrorCode.Lockout`, or its string, `\'LOCKOUT\'`. Without it, any code matches.' },
+  ]}
+/>
+
+### Returns {#returns}
+
+`true` when `error` is a [`KeychainError`](./KeychainError) and, if `code` is given, its code is that one. In TypeScript the error is a `KeychainError` from then on.
+
+It is `error instanceof KeychainError`, with the code compared: one line instead of two in each `catch`. `@apexnative/keychain/migrate`, `/compat` and `/jest` export the same function, for the same class.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'KeychainError', text: 'The class and its properties.', to: '/api/errors/KeychainError' },
+    { name: 'KeychainErrorCode', text: 'Every code.', to: '/api/errors/KeychainErrorCode' },
+  ]}
+/>

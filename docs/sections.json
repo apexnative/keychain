@@ -1,0 +1,274 @@
+{
+  "groups": [
+    {
+      "id": "start",
+      "title": "Getting started",
+      "sections": [
+        {
+          "id": "introduction",
+          "title": "Introduction"
+        },
+        {
+          "id": "installation",
+          "title": "Installation"
+        },
+        {
+          "id": "quick-start",
+          "title": "Quick start"
+        }
+      ]
+    },
+    {
+      "id": "fundamentals",
+      "title": "Fundamentals",
+      "sections": [
+        {
+          "id": "storage-model",
+          "title": "Storage model"
+        },
+        {
+          "id": "protection",
+          "title": "Protection"
+        },
+        {
+          "id": "biometrics",
+          "title": "How biometrics works"
+        },
+        {
+          "id": "sync-api",
+          "title": "Synchronous API"
+        },
+        {
+          "id": "errors",
+          "title": "Errors"
+        }
+      ]
+    },
+    {
+      "id": "guides",
+      "title": "Guides",
+      "sections": [
+        {
+          "id": "overview",
+          "title": "Overview"
+        },
+        {
+          "id": "biometric-sign-in",
+          "title": "Sign-in with Face ID"
+        },
+        {
+          "id": "encryption-key",
+          "title": "A key for MMKV or SQLCipher"
+        },
+        {
+          "id": "reinstall",
+          "title": "Reinstalls"
+        },
+        {
+          "id": "sharing-between-apps",
+          "title": "Sharing between apps"
+        },
+        {
+          "id": "icloud-keychain",
+          "title": "iCloud Keychain"
+        },
+        {
+          "id": "testing",
+          "title": "Testing"
+        }
+      ]
+    },
+    {
+      "id": "migration",
+      "title": "Migration",
+      "sections": [
+        {
+          "id": "from-react-native-keychain",
+          "title": "From react-native-keychain"
+        },
+        {
+          "id": "from-expo-secure-store",
+          "title": "From expo-secure-store"
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "title": "Security",
+      "sections": [
+        {
+          "id": "threat-model",
+          "title": "Threat model"
+        },
+        {
+          "id": "ios",
+          "title": "On iOS"
+        },
+        {
+          "id": "android",
+          "title": "On Android"
+        },
+        {
+          "id": "comparison",
+          "title": "Compared with others"
+        }
+      ]
+    },
+    {
+      "id": "help",
+      "title": "Help",
+      "sections": [
+        {
+          "id": "error-codes",
+          "title": "Error codes"
+        },
+        {
+          "id": "faq",
+          "title": "FAQ"
+        }
+      ]
+    }
+  ],
+  "api": [
+    {
+      "id": "package",
+      "title": "@apexnative/keychain",
+      "sections": [
+        {
+          "id": "overview",
+          "title": "Overview",
+          "docs": ["overview"],
+          "labels": ["Overview"]
+        },
+        {
+          "id": "storage",
+          "title": "Storage",
+          "status": "review",
+          "guide": "/docs/fundamentals/storage-model",
+          "docs": [
+            "storage/keychain",
+            "storage/createKeychain",
+            "storage/methods",
+            "storage/types"
+          ],
+          "labels": ["keychain", "createKeychain", "Keychain", "Types"]
+        },
+        {
+          "id": "options",
+          "title": "Options",
+          "status": "review",
+          "guide": "/docs/fundamentals/protection",
+          "docs": [
+            "options/KeychainOptions",
+            "options/Accessible",
+            "options/AccessControl",
+            "options/KeyStorage",
+            "options/types"
+          ],
+          "labels": ["KeychainOptions", "Accessible", "AccessControl", "KeyStorage", "Types"]
+        },
+        {
+          "id": "device",
+          "title": "Device capabilities",
+          "status": "review",
+          "guide": "/docs/fundamentals/biometrics",
+          "docs": [
+            "device/getBiometryTypes",
+            "device/canUseAccessControl",
+            "device/isPasscodeSet",
+            "device/getBiometryState",
+            "device/getHardwareSecurityLevel",
+            "device/BiometryType",
+            "device/HardwareSecurityLevel",
+            "device/types"
+          ],
+          "labels": [
+            "getBiometryTypes",
+            "canUseAccessControl",
+            "isPasscodeSet",
+            "getBiometryState",
+            "getHardwareSecurityLevel",
+            "BiometryType",
+            "HardwareSecurityLevel",
+            "Types"
+          ]
+        },
+        {
+          "id": "errors",
+          "title": "Errors",
+          "status": "review",
+          "guide": "/docs/fundamentals/errors",
+          "docs": [
+            "errors/KeychainError",
+            "errors/KeychainErrorCode",
+            "errors/isKeychainError",
+            "errors/types"
+          ],
+          "labels": ["KeychainError", "KeychainErrorCode", "isKeychainError", "Types"]
+        }
+      ]
+    },
+    {
+      "id": "entry-points",
+      "title": "Entry points",
+      "sections": [
+        {
+          "id": "migrate",
+          "title": "/migrate",
+          "status": "draft",
+          "guide": "/docs/migration/from-react-native-keychain",
+          "docs": [
+            "migrate/migrateFromReactNativeKeychain",
+            "migrate/migrateFromExpoSecureStore",
+            "migrate/migrateItem",
+            "migrate/types"
+          ],
+          "labels": [
+            "migrateFromReactNativeKeychain",
+            "migrateFromExpoSecureStore",
+            "migrateItem",
+            "Types"
+          ]
+        },
+        {
+          "id": "compat",
+          "title": "/compat",
+          "status": "review",
+          "guide": "/docs/migration/from-react-native-keychain#compat",
+          "docs": [
+            "compat/overview",
+            "compat/generic-passwords",
+            "compat/internet-credentials",
+            "compat/device",
+            "compat/constants",
+            "compat/types"
+          ],
+          "labels": [
+            "Overview",
+            "Generic passwords",
+            "Internet credentials",
+            "Device",
+            "Constants",
+            "Types"
+          ]
+        },
+        {
+          "id": "jest",
+          "title": "/jest",
+          "status": "review",
+          "guide": "/docs/guides/testing",
+          "docs": ["jest/overview", "jest/keychainMock", "jest/types"],
+          "labels": ["Overview", "keychainMock", "Types"]
+        },
+        {
+          "id": "plugin",
+          "title": "Config plugin",
+          "status": "review",
+          "guide": "/docs/start/installation#expo",
+          "docs": ["plugin"],
+          "labels": ["Config plugin"]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,220 @@
+---
+title: Types of /compat
+description: 'The option and result types of react-native-keychain 10, as far as this package takes them: which item, how to protect it, the texts of the prompt, and what the calls resolve with.'
+hide_title: true
+---
+
+import { ApiHeader, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Types" importName="type SetOptions, type UserCredentials" from="@apexnative/keychain/compat" />
+
+The types have rnk's names, so code that annotates its options or results keeps compiling. The constants they use, `ACCESSIBLE` and the rest, are on [Constants](./constants).
+
+## BaseOptions {#baseoptions}
+
+Which item: a service for a generic password, a server for internet credentials.
+
+```ts
+type BaseOptions = {
+  service?: string;
+  server?: string;
+  cloudSync?: boolean;
+  accessGroup?: string;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'service', type: 'string', text: 'The service of a generic password: the store of that service. Without it, the app\'s default service, the bundle identifier or the `applicationId`.' },
+    { name: 'server', type: 'string', text: 'The server of internet credentials, for `hasInternetCredentials` and `resetInternetCredentials`. The other functions take it as an argument.' },
+    { name: 'cloudSync', type: 'boolean', text: 'iOS: keep the item in iCloud Keychain, the core\'s [`synchronizable`](/api/options/KeychainOptions#synchronizable). Read by the writes only.' },
+    { name: 'accessGroup', type: 'string', text: 'iOS: the keychain [access group](/api/options/KeychainOptions#access-group) of the store.' },
+  ]}
+/>
+
+## AccessControlOption {#accesscontroloption}
+
+```ts
+type AccessControlOption = {
+  accessControl?: ACCESS_CONTROL;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'accessControl', type: 'ACCESS_CONTROL', text: 'What unlocks the item: see [ACCESS_CONTROL](./constants#access-control). A write protects the item with it; a read and `getSecurityLevel` only check it, and `APPLICATION_PASSWORD` is `UNSUPPORTED` everywhere.' },
+  ]}
+/>
+
+## AuthenticationTypeOption {#authenticationtypeoption}
+
+```ts
+type AuthenticationTypeOption = {
+  authenticationType?: AUTHENTICATION_TYPE;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'authenticationType', type: 'AUTHENTICATION_TYPE', default: 'DEVICE_PASSCODE_OR_BIOMETRICS', text: 'What [`canImplyAuthentication`](./device#canImplyAuthentication) asks about. In the options of a read it is accepted and ignored.' },
+  ]}
+/>
+
+## AuthenticationPrompt {#authenticationprompt}
+
+The texts of the prompt a protected read shows. Where a read takes it, a plain string is the title.
+
+```ts
+type AuthenticationPrompt = {
+  title?: string;
+  subtitle?: string;
+  description?: string;
+  cancel?: string;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'title', type: 'string', default: "'Authenticate to retrieve secret'", text: 'The reason on iOS, the title on Android.' },
+    { name: 'subtitle', type: 'string', text: 'Android only.' },
+    { name: 'description', type: 'string', text: 'Android only.' },
+    { name: 'cancel', type: 'string', default: "'Cancel'", text: 'The cancel button.' },
+  ]}
+/>
+
+The core's [`Prompt`](/api/options/KeychainOptions#prompt) has two more fields, `fallback` and `confirmationRequired`; `/compat` keeps the core's defaults for them.
+
+## SetOptions {#setoptions}
+
+The options of `setGenericPassword` and `setInternetCredentials`.
+
+```ts
+type SetOptions = BaseOptions &
+  AccessControlOption & {
+    accessible?: ACCESSIBLE;
+    securityLevel?: SECURITY_LEVEL;
+    storage?: STORAGE_TYPE;
+    authenticationPrompt?: AuthenticationPrompt | string;
+  };
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'accessible', type: 'ACCESSIBLE', default: 'AFTER_FIRST_UNLOCK', text: 'When the item can be read: see [ACCESSIBLE](./constants#accessible). `ALWAYS` is `UNSUPPORTED`.' },
+    { name: 'securityLevel', type: 'SECURITY_LEVEL', text: 'Android: `SECURE_HARDWARE` fails with `HARDWARE_UNAVAILABLE` on a device that keeps keys in software. The other values change nothing.' },
+    { name: 'storage', type: 'STORAGE_TYPE', text: 'Not supported: any value is `UNSUPPORTED`. The package chooses its cipher.' },
+    { name: 'authenticationPrompt', type: 'AuthenticationPrompt | string', text: 'Accepted and ignored: a write never shows a prompt.' },
+  ]}
+/>
+
+And the fields of [`BaseOptions`](#baseoptions) and [`AccessControlOption`](#accesscontroloption). Other names that rnk has dropped or never had are ignored.
+
+## GetOptions {#getoptions}
+
+The options of `getGenericPassword` and `getInternetCredentials`.
+
+```ts
+type GetOptions = BaseOptions &
+  AccessControlOption &
+  Partial<AuthenticationTypeOption> & {
+    authenticationPrompt?: AuthenticationPrompt | string;
+  };
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'authenticationPrompt', type: 'AuthenticationPrompt | string', text: 'The texts of the prompt, when the item is protected. A string is the title. Without it, rnk\'s texts: `Authenticate to retrieve secret` and `Cancel`.' },
+  ]}
+/>
+
+And the fields of [`BaseOptions`](#baseoptions), [`AccessControlOption`](#accesscontroloption) and [`AuthenticationTypeOption`](#authenticationtypeoption): of those, a read uses `service` and `accessGroup`; `accessControl` is only checked, `authenticationType` and `cloudSync` are ignored.
+
+## GetAllOptions {#getalloptions}
+
+```ts
+type GetAllOptions = {
+  skipUIAuth?: boolean;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'skipUIAuth', type: 'boolean', text: 'Accepted and changes nothing: [`getAllGenericPasswordServices`](./generic-passwords#getAllGenericPasswordServices) never shows a prompt.' },
+  ]}
+/>
+
+## Result {#result}
+
+What a write resolves with.
+
+```ts
+type Result = {
+  service: string;
+  storage: STORAGE_TYPE | 'keychain';
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'service', type: 'string', text: 'The service of a generic password, the server of internet credentials.' },
+    { name: 'storage', type: "STORAGE_TYPE | 'keychain'", text: '`\'keychain\'` on iOS, `\'KeystoreAESGCM\'` on Android.' },
+  ]}
+/>
+
+## UserCredentials {#usercredentials}
+
+What `getGenericPassword` resolves with when there is a password.
+
+```ts
+type UserCredentials = Result & {
+  username: string;
+  password: string;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'username', type: 'string', text: 'The user name, kept as the item\'s label.' },
+    { name: 'password', type: 'string', text: 'The secret.' },
+  ]}
+/>
+
+And `service` and `storage` of [`Result`](#result).
+
+## InternetCredentials {#internetcredentials}
+
+What `getInternetCredentials` resolves with when there are credentials.
+
+```ts
+type InternetCredentials = UserCredentials & {
+  server: string;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'server', type: 'string', text: 'The server. `service` holds it too.' },
+  ]}
+/>
+
+And the fields of [`UserCredentials`](#usercredentials).
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'Constants', text: '`ACCESSIBLE`, `ACCESS_CONTROL` and the rest.', to: '/api/compat/constants' },
+    { name: 'Generic passwords', text: 'The functions that take these options.', to: '/api/compat/generic-passwords' },
+    { name: 'Overview', text: 'How the options map to the core\'s, and what is `UNSUPPORTED`.', to: '/api/compat/overview' },
+  ]}
+/>

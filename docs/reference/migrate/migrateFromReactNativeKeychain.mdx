@@ -1,0 +1,96 @@
+---
+title: migrateFromReactNativeKeychain
+description: 'Moves what react-native-keychain stored into this package: the generic passwords of the services you name and the internet credentials of the servers. It never shows a prompt; protected items are left for migrateItem.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="migrateFromReactNativeKeychain" from="@apexnative/keychain/migrate" />
+
+The package can't see react-native-keychain's items: on iOS it reads only its own Keychain items, and on Android rnk keeps its data in files and keys of its own. This function reads them where rnk left them, writes each into this package, and reports what it did. Run it once at startup, before the code that reads the secrets.
+
+## Usage {#usage}
+
+```ts title="src/storage/migrate.ts"
+import { migrateFromReactNativeKeychain } from '@apexnative/keychain/migrate';
+
+export async function migrateSecrets() {
+  await migrateFromReactNativeKeychain({ removeSource: true }); // rnk's default service
+
+  const report = await migrateFromReactNativeKeychain({
+    services: ['auth'], // the `service` values your app passed to rnk
+    servers: ['api.example.com'], // the servers of setInternetCredentials
+    removeSource: true,
+  });
+  // {
+  //   migrated: ['auth'],
+  //   skipped: [{ key: 'api.example.com', kind: 'internetPassword', reason: 'requiresAuth' }],
+  //   warnings: [],
+  // }
+  return report;
+}
+```
+
+A second run finds nothing new: what was moved is either gone (`removeSource: true`) or marked as moved, and nothing is written twice.
+
+## Signature {#signature}
+
+```ts
+function migrateFromReactNativeKeychain(
+  options?: MigrateFromReactNativeKeychainOptions
+): Promise<MigrationReport>;
+```
+
+<Facts returns="Promise<MigrationReport>" prompt="Never: a protected item is skipped as `requiresAuth`" throws="`INVALID_ARGUMENT` for options that aren't valid; a failure to list rnk's items. A failure of one item is in the report" />
+
+### Parameters {#parameters}
+
+<Params
+  items={[
+    { name: 'services', type: 'string[]', text: 'The services of the generic passwords to move. Without it, rnk\'s default service: the bundle identifier on iOS, rnk\'s own default on Android. With it, these services and not the default: move the default with a call without `services`. Services are moved only by name: on iOS rnk\'s items look like those of any other SDK.' },
+    { name: 'servers', type: 'string[]', text: 'The servers of the internet credentials to move. Without it, none.' },
+    { name: 'into', type: 'Keychain', text: 'The storage that gets the internet credentials. Default: [`keychain`](/api/storage/keychain). Generic passwords go to the storage of their own service, not to this one.' },
+    { name: 'removeSource', type: 'boolean', default: 'false', text: 'Delete each old item once the new one is written. With `false`, the old item is marked as moved and kept; a later run with `true` deletes it, if the new item is still there.' },
+    { name: 'accessGroup', type: 'string', text: 'iOS: move only the items of this access group. Default: every group the app can read. A generic password is written into the group its old item was in; internet credentials go to `into`, whatever its group.' },
+  ]}
+/>
+
+### Returns {#returns}
+
+A [MigrationReport](./types#migrationreport): the keys moved, the items skipped with a reason, and the warnings about old items that stayed.
+
+## Where each item goes {#where}
+
+| rnk item | Becomes | Key in the report |
+| --- | --- | --- |
+| A generic password of service `S` (`setGenericPassword(u, p, { service: S })`) | The credentials of the storage `createKeychain({ service: S })`: `getCredentials()` there gives `{ username: u, password: p }` | `S` |
+| rnk's default service | The credentials of the default storage, [`keychain`](/api/storage/keychain) | The service |
+| Internet credentials of server `X` | The credentials of `into` with `server: X`: `into.getCredentials({ server: X })` | `X` |
+
+The username becomes the label of the item, readable without a prompt; the password its value. The same layout is what [`/compat`](/api/compat/overview) reads and writes, so an app can move the data and keep rnk's calls for a while.
+
+The new items are written with the defaults of their storage: `afterFirstUnlock`, no access control. A protected rnk item isn't moved here at all.
+
+## What is skipped {#skipped}
+
+- **`requiresAuth`** — the rnk item needs the user (rnk's `accessControl`). This function never shows a prompt; move it with [`migrateItem`](./migrateItem) when the user is there, such as on the sign-in screen.
+- **`exists`** — this package has an item under the key already: nothing is overwritten. Also an item that an earlier run moved and kept.
+- **`notFound`** — the item vanished between the listing and the read, or has no value.
+- **`error`** — reading or writing failed; `error` holds the `KeychainError`.
+
+## Running it safely {#safely}
+
+- **Only once react-native-keychain is out of the way.** With `removeSource: true`, run the migration before the app's code calls react-native-keychain in this launch, or once rnk is removed from the app. Otherwise both libraries work on the same items at once.
+- **One run at a time.** The items are moved one after another; don't start a second migration while one runs.
+- **No item is lost.** The old item is deleted, or marked, only after the new one is written. When that last step fails, the new item is there and the report has a warning; the next run skips the item as `exists`.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'From react-native-keychain', text: 'The whole move: the data, the calls, the differences.', to: '/docs/migration/from-react-native-keychain' },
+    { name: 'migrateItem', text: 'Moves one protected item, with a prompt.', to: '/api/migrate/migrateItem' },
+    { name: 'MigrationReport', text: 'What the report holds.', to: '/api/migrate/types#migrationreport' },
+  ]}
+/>

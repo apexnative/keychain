@@ -1,0 +1,162 @@
+---
+title: KeychainOptions
+description: 'The options of createKeychain: the service, the protection its items get by default, the texts of its prompt, iCloud Keychain, the access group, and where Android keeps the keys. Every option means the same on iOS and Android.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+import { Os } from '@site/src/components/Intro';
+
+<ApiHeader kind="Type" importName="type KeychainOptions" />
+
+The options of a storage are the defaults of its calls. A write's [`SetOptions`](/api/storage/types#setoptions) override the protection options for one item, a read's [`GetOptions`](/api/storage/types#getoptions) the prompt for one read; `service` and `accessGroup` belong to the storage alone. An option the device can't give is an error, never a weaker item.
+
+## Usage {#usage}
+
+```ts title="src/vault.ts"
+import { AccessControl, Accessible, createKeychain, KeyStorage } from '@apexnative/keychain';
+
+export const vault = createKeychain({
+  service: 'vault',
+  accessible: Accessible.WhenUnlockedThisDeviceOnly,
+  accessControl: AccessControl.BiometryAnyOrPasscode,
+  authValidity: 30,
+  prompt: { title: 'Unlock your account', cancel: 'Use password' },
+  android: { keyStorage: KeyStorage.Strongbox },
+});
+```
+
+## Signature {#signature}
+
+```ts
+type KeychainOptions = {
+  service?: string;
+  accessible?: Accessible;
+  accessControl?: AccessControl;
+  authValidity?: number;
+  synchronizable?: boolean;
+  accessGroup?: string;
+  prompt?: Prompt;
+  android?: AndroidOptions;
+};
+```
+
+Every option is optional. An option name that isn't one of these, or a value that isn't one of the option's, throws `INVALID_ARGUMENT` from `createKeychain`; so do the combinations below that no item can have.
+
+## `service` {#service}
+
+<Facts type="string" defaultValue="the bundle identifier / the application id" />
+
+The name of the storage. Items of one service are one storage: `getAllKeys()` lists them, `clear()` removes them. Two storages of the same service see the same items. A non-empty string of up to 256 characters, without U+0000.
+
+```ts
+createKeychain({ service: 'vault' });
+```
+
+On iOS the service is the items' `kSecAttrService`; on Android it names the file the items are kept in and their Keystore keys.
+
+## `accessible` {#accessible}
+
+<Facts type="Accessible" defaultValue="'afterFirstUnlock'" />
+
+When the items can be read: from the first unlock after a restart, or only while the device is unlocked, or only while it has a passcode. The `…ThisDeviceOnly` values also keep an item out of iCloud Keychain and out of a backup restored on another iPhone. A read at a time the value doesn't allow fails with `INTERACTION_NOT_ALLOWED`. Every value is on [Accessible](./Accessible).
+
+```ts
+createKeychain({ accessible: Accessible.WhenUnlockedThisDeviceOnly });
+```
+
+## `accessControl` {#access-control}
+
+<Facts type="AccessControl" defaultValue="'none'" />
+
+What unlocks an item: nothing, biometrics, the device passcode, or either. Anything but `'none'` makes a read show the system prompt; a write never does. A device that can't give the protection fails the write (`BIOMETRY_NOT_ENROLLED`, `PASSCODE_NOT_SET`, …). Every value is on [AccessControl](./AccessControl).
+
+```ts
+createKeychain({ accessControl: AccessControl.BiometryCurrentSet });
+```
+
+## `authValidity` {#auth-validity}
+
+<Facts type="number" defaultValue="0" />
+
+Seconds one successful prompt opens the items for: the next reads of the same service with the same `accessControl` need no prompt while the window is open. `0` asks on every read. A whole number from `0` to 2147483647.
+
+```ts
+const vault = createKeychain({
+  service: 'vault',
+  accessControl: AccessControl.BiometryAnyOrPasscode,
+  authValidity: 30,
+});
+
+await vault.getItem('a'); // the prompt
+await vault.getItem('b'); // within 30 seconds: no prompt
+```
+
+- **The window is the package's, the same on both platforms.** It belongs to a service and an `accessControl` together. It never carries over what the app can't vouch for: the first read after the app starts always shows the prompt, and the window closes when the app goes to the background. On Android the Keystore's own window is only an outer limit: unlocking the screen opens it, but not the package's.
+- **Not with `biometryCurrentSet` or `biometryCurrentSetOrPasscode`** (`INVALID_ARGUMENT`): Android notices a new enrollment only on a key that needs the user for every use, so with a window "current set" would mean "any".
+- **Android 11 and newer.** Before it, a write with `authValidity` above 0 and an `accessControl` throws `UNSUPPORTED`.
+- With `accessControl: 'none'` the option has nothing to open, and is ignored.
+
+## `synchronizable` {#synchronizable}
+
+<Facts type="boolean" defaultValue="false" platforms={['ios']} />
+
+<Os name="iOS" /> Keep the items in iCloud Keychain, on every device of the user's Apple account. Not with a `…ThisDeviceOnly` `accessible`, nor with an `accessControl` other than `'none'`: iCloud syncs neither (`INVALID_ARGUMENT`, on both platforms). Android has no such thing: it keeps the item on the device and, in development, warns once. See [iCloud Keychain](/docs/guides/icloud-keychain).
+
+```ts
+createKeychain({ service: 'settings', synchronizable: true });
+```
+
+## `accessGroup` {#access-group}
+
+<Facts type="string" defaultValue="the app's default group" platforms={['ios']} />
+
+<Os name="iOS" /> The keychain access group the items live in, to share them with the app's extensions and the other apps of the team. The full group, with the team id: `'ABCDE12345.com.example.shared'`. The app needs the group in its `keychain-access-groups` entitlement; without it a call fails with `MISSING_ENTITLEMENT`. Android ignores the option. See [Sharing between apps](/docs/guides/sharing-between-apps).
+
+```ts
+createKeychain({ service: 'shared', accessGroup: 'ABCDE12345.com.example.shared' });
+```
+
+## `prompt` {#prompt}
+
+<Facts type="Prompt" defaultValue="the system's texts" />
+
+The texts of the prompt that reads of protected items show. A read's own `prompt` is merged over it field by field. Every field is on [Prompt](./types#prompt); a field a platform doesn't have is ignored there, so one `prompt` works for both.
+
+```ts
+createKeychain({
+  accessControl: AccessControl.BiometryCurrentSet,
+  prompt: { title: 'Unlock your account', cancel: 'Use password', subtitle: 'Example' },
+});
+```
+
+## `android` {#android}
+
+<Facts type="AndroidOptions" defaultValue="{ keyStorage: 'tee' }" platforms={['android']} />
+
+<Os name="Android" /> Where the Keystore keys of the items live: `keyStorage` is `'tee'`, `'strongbox'` or `'strongboxRequired'`. See [KeyStorage](./KeyStorage). iOS ignores it.
+
+```ts
+createKeychain({ android: { keyStorage: KeyStorage.StrongboxRequired } });
+```
+
+## Combinations that throw {#combinations}
+
+`createKeychain` checks its options as a write would, and a write checks the call's options over the storage's, the same way on both platforms:
+
+| Combination | Error |
+| --- | --- |
+| `accessControl: 'biometryCurrentSet'` or `'biometryCurrentSetOrPasscode'` with `authValidity` above 0 | `INVALID_ARGUMENT` |
+| `synchronizable: true` with a `…ThisDeviceOnly` `accessible` | `INVALID_ARGUMENT` |
+| `synchronizable: true` with an `accessControl` other than `'none'` | `INVALID_ARGUMENT` |
+| An empty `accessGroup` | `INVALID_ARGUMENT` |
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'createKeychain', text: 'Makes a storage with these options.', to: '/api/storage/createKeychain' },
+    { name: 'Protection', text: 'How to choose `accessible` and `accessControl`.', to: '/docs/fundamentals/protection' },
+    { name: 'SetOptions', text: 'The options of one write.', to: '/api/storage/types#setoptions' },
+  ]}
+/>

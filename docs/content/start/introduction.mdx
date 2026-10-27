@@ -1,0 +1,147 @@
+---
+title: Introduction
+description: 'What @apexnative/keychain is, what it promises on both platforms, and which apps it fits.'
+---
+
+import { Fit, Mark, Models, Os, Principles, Thesis } from '@site/src/components/Intro';
+
+`@apexnative/keychain` keeps an app's secrets where the platform keeps its own: in the Keychain <Os name="iOS" /> and under keys of the Android Keystore <Os name="Android" />. Tokens, passwords and encryption keys go in by key and come out by key; a value can be locked behind Face ID, a fingerprint or the device passcode, and the operating system checks it.
+
+```ts title="session.ts"
+import { AccessControl, createKeychain, keychain } from '@apexnative/keychain';
+
+// The default keychain: no prompt, readable in the background.
+await keychain.setItem('accessToken', accessToken);
+
+// A vault that opens with the biometrics enrolled today.
+const vault = createKeychain({
+  service: 'vault',
+  accessControl: AccessControl.BiometryCurrentSet,
+  prompt: { title: 'Unlock your account' },
+});
+
+await vault.setItem('refreshToken', refreshToken); // no prompt
+const token = await vault.getItem('refreshToken'); // Face ID, then the value
+```
+
+The write never shows a prompt. The read shows the system prompt, and the value comes back only when the user passes it. The [Quick start](./quick-start) builds this step by step.
+
+## Why another keychain package {#why}
+
+React Native has two common answers for secure storage, and both leave gaps.
+
+`react-native-keychain` is the standard, but its last release is from March 2025 and its architecture predates the New Architecture: the TurboModule spec types every parameter as `Object`, and Android still runs a separate old-architecture module. Its API is built around one username and password per service, so a token or a key has to borrow the service as its name. On Android, a request for biometrics on a device without them quietly stores the value without protection.
+
+`expo-secure-store` has the friendlier key/value model, but one switch for security (`requireAuthentication`), errors without codes, a changed fingerprint set that reads as `null`, and a synchronous API that can block the JS thread on a prompt.
+
+This package keeps the key/value model, adds bytes and credentials, and makes the security options mean the same thing on both platforms.
+
+<Models
+  columns={[
+    { eyebrow: 'Standard', title: 'react-native-keychain 10' },
+    { eyebrow: 'Expo', title: 'expo-secure-store' },
+    { eyebrow: '@apexnative · this library', title: 'keychain' },
+  ]}
+  rows={[
+    {
+      label: 'Data',
+      cells: [
+        'A username and a password per service.',
+        'A string per key.',
+        'A string or bytes per key, plus credentials.',
+      ],
+    },
+    {
+      label: 'Protection',
+      cells: [
+        'Seven flags on iOS; on Android biometryAny is the same as currentSet.',
+        'One boolean.',
+        'Six options, with the same meaning on both platforms.',
+      ],
+    },
+    {
+      label: 'No biometrics',
+      cells: [
+        'Android stores the value without protection.',
+        'An error.',
+        'An error on both platforms.',
+      ],
+    },
+    {
+      label: 'Changed biometrics',
+      cells: ['An error.', <><code>null</code>, as if nothing were stored.</>, <><code>KEY_INVALIDATED</code>; the item is removed.</>],
+    },
+    {
+      label: 'Errors',
+      cells: [<>Codes, <code>E_*</code>.</>, 'Native messages.', <>Codes on a <code>KeychainError</code>.</>],
+    },
+    {
+      label: 'Architecture',
+      cells: ['A spec of Object types, plus the old architecture.', 'Expo Modules.', 'A typed TurboModule, New Architecture only.'],
+    },
+  ]}
+/>
+
+[Compared with others](../security/comparison) goes through every difference.
+
+## What it promises {#promises}
+
+<Principles
+  items={[
+    {
+      title: 'One meaning on both platforms',
+      text: <>An option behaves the same on iOS and Android. A platform that can't do it throws, so shared code needs no <code>Platform.select</code> to stay safe.</>,
+    },
+    {
+      title: 'Never weaker, never silent',
+      text: <>If the device can't give the protection you asked for, the write fails with a code. A value is never stored with less.</>,
+    },
+    {
+      title: 'Writes never prompt',
+      text: 'Storing a value shows no prompt on either platform. Only reading a protected value does.',
+    },
+    {
+      title: 'Reads without a lock never wait',
+      text: <>A read of an unprotected item doesn't wait for a prompt that is open for another item. <code>hasItem</code>, <code>getItemInfo</code> and <code>getAllKeys</code> never prompt.</>,
+    },
+    {
+      title: 'Errors you can act on',
+      text: <>A missing value is <code>null</code>. A cancel, a lockout or a changed fingerprint set is a <code>KeychainError</code> with its own code.</>,
+    },
+    {
+      title: 'Nothing at startup',
+      text: 'The module does no work when it loads. A service is read the first time you use it.',
+    },
+  ]}
+/>
+
+<Thesis eyebrow="The idea in one line">
+  Biometrics is a <Mark>lock on the value</Mark>, not a <Mark>yes from JavaScript</Mark>.
+</Thesis>
+
+A check that shows Face ID and returns `true` lives in your app's code, and on a compromised device the answer can be changed while the token sits unprotected. Here the operating system encrypts the value with a key that works only after the user passes the prompt; without it, the value can't be decrypted at all. [How biometrics works](../fundamentals/biometrics) explains the details.
+
+## Where it fits {#fit}
+
+<Fit
+  yes={[
+    'Access and refresh tokens, session secrets, API keys of the user.',
+    'The key of an encrypted database: MMKV, SQLCipher, op-sqlite.',
+    'A username and password for a sign-in form, with the password behind Face ID.',
+    'Bare React Native apps and Expo apps with a dev build, on React Native 0.80 or newer.',
+    'Apps moving from react-native-keychain or expo-secure-store: the items move with one call, and the compat layer keeps the old calls working.',
+  ]}
+  no={[
+    'Signing, keys in the Secure Enclave, passkeys: general cryptography is a separate package.',
+    'Password AutoFill and shared web credentials: that is AuthenticationServices and Credential Manager.',
+    'Large data: keep files encrypted on disk and their key here.',
+    'Expo Go, the old architecture and the web (the web has only a mock for tests).',
+  ]}
+/>
+
+## Next {#next}
+
+- [Installation](./installation): the package in a bare app or an Expo app.
+- [Quick start](./quick-start): a token, a vault behind Face ID, and the errors to handle.
+- [Protection](../fundamentals/protection): every value of `accessible` and `accessControl`.
+- [From react-native-keychain](../migration/from-react-native-keychain) or [from expo-secure-store](../migration/from-expo-secure-store): moving an app and its users' data.

@@ -1,0 +1,10 @@
+{
+  "extends": "@docusaurus/tsconfig",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "resolveJsonModule": true,
+    "ignoreDeprecations": "6.0",
+    "types": ["@docusaurus/module-type-aliases", "@docusaurus/theme-classic", "node"]
+  },
+  "exclude": [".docusaurus", "build", "node_modules"]
+}

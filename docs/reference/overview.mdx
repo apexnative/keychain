@@ -1,0 +1,74 @@
+---
+title: API reference
+description: 'Every export of @apexnative/keychain and its entry points, with a page each: the signature, the parameters, what it returns, whether it can show the prompt, what it throws, and examples. Below, the rules every call follows.'
+hide_title: true
+---
+
+import { ApiHeader } from '@site/src/components/Api';
+
+<ApiHeader kind="Overview" />
+
+## Entry points {#entry-points}
+
+| Import from | What it has |
+| --- | --- |
+| `@apexnative/keychain` | The storage, its options, the device capabilities, the errors |
+| [`@apexnative/keychain/migrate`](/api/migrate/migrateFromReactNativeKeychain) | Moving the items of react-native-keychain and expo-secure-store into the package |
+| [`@apexnative/keychain/compat`](/api/compat/overview) | The functions of react-native-keychain over the package's storage |
+| [`@apexnative/keychain/jest`](/api/jest/overview) | The same API over a storage in memory, and `keychainMock` to drive it in tests |
+| [`app.plugin.js`](/api/plugin) | The Expo config plugin: `"plugins": ["@apexnative/keychain"]` |
+
+`/migrate` and `/compat` are separate so that an app that doesn't use them doesn't load them.
+
+## Storage {#storage}
+
+| Export | Kind | What it is |
+| --- | --- | --- |
+| [`keychain`](/api/storage/keychain) | Object | The storage of the default service: the bundle identifier, the application id |
+| [`createKeychain`](/api/storage/createKeychain) | Function | A storage of its own service, with defaults for its calls |
+| [`Keychain`](/api/storage/methods) | Interface | The methods of a storage: strings, bytes, info, listing, sync calls, credentials |
+| [`SetOptions`](/api/storage/types#setoptions), [`GetOptions`](/api/storage/types#getoptions) | Types | The options of a write and of a read |
+| [`ItemInfo`](/api/storage/types#iteminfo) | Type | What `getItemInfo` reports without a prompt |
+| [`Credentials`](/api/storage/types#credentials), [`CredentialsOptions`](/api/storage/types#credentialsoptions) | Types | A username and a password, and the server they are for |
+
+## Options {#options}
+
+| Export | Kind | What it is |
+| --- | --- | --- |
+| [`KeychainOptions`](/api/options/KeychainOptions) | Type | The options of `createKeychain` |
+| [`Accessible`](/api/options/Accessible) | Constants, type | When an item can be read |
+| [`AccessControl`](/api/options/AccessControl) | Constants, type | What unlocks an item |
+| [`KeyStorage`](/api/options/KeyStorage) | Constants, type | Where Android keeps the item's key |
+| [`Prompt`](/api/options/types#prompt) | Type | The texts of the system prompt |
+| [`AndroidOptions`](/api/options/types#androidoptions) | Type | The options for Android only |
+
+## Device capabilities {#device}
+
+| Export | Kind | What it is |
+| --- | --- | --- |
+| [`getBiometryTypes`](/api/device/getBiometryTypes) | Function | The biometrics of the device that can unlock a key |
+| [`canUseAccessControl`](/api/device/canUseAccessControl) | Function | Whether an item can be written with an `accessControl` now, and why not |
+| [`isPasscodeSet`](/api/device/isPasscodeSet) | Function | Whether the device has a passcode, PIN or pattern |
+| [`getBiometryState`](/api/device/getBiometryState) | Function | A token that changes when the enrolled biometrics change |
+| [`getHardwareSecurityLevel`](/api/device/getHardwareSecurityLevel) | Function | Where Android keeps new keys; `null` on iOS |
+| [`BiometryType`](/api/device/BiometryType) | Constants, type | A biometric modality: `faceID`, `fingerprint`, … |
+| [`HardwareSecurityLevel`](/api/device/HardwareSecurityLevel) | Constants, type | `strongbox`, `tee` or `software` |
+| [`AccessControlAvailability`](/api/device/types#accesscontrolavailability) | Type | What `canUseAccessControl` answers |
+
+## Errors {#errors}
+
+| Export | Kind | What it is |
+| --- | --- | --- |
+| [`KeychainError`](/api/errors/KeychainError) | Class | The error of every failed call: `code`, `nativeCode`, `nativeDomain` |
+| [`KeychainErrorCode`](/api/errors/KeychainErrorCode) | Constants, type | Every code |
+| [`isKeychainError`](/api/errors/isKeychainError) | Function | Whether a value is a `KeychainError`, optionally with a given code |
+| [`KeychainErrorDetails`](/api/errors/types#keychainerrordetails) | Type | The native details of an error |
+
+## Rules of every call {#conventions}
+
+- **Errors.** Every call fails with a `KeychainError`: an async method rejects, a sync method throws. A missing value is `null`, never an error. A method without a value resolves to `undefined`.
+- **Checks first.** Keys, values and options are checked in JavaScript before the native call, the same way on iOS and Android. A key that breaks the rules, a string with U+0000, an option with a wrong value, or an option name that doesn't exist throws `INVALID_ARGUMENT`.
+- **Prompts.** Only reads of a protected item (`getItem`, `getBytes`, `getCredentials`, and `migrateItem` of a protected old item) can show the system prompt. Writes, removals, `hasItem`, `getItemInfo`, `getAllKeys`, `clear`, the sync methods and the device functions never do.
+- **Never weaker.** An option means the same on both platforms. A device that can't give an item its protection fails the write; the item is never stored with less.
+- **Only its own items.** The package reads, lists and removes only the items it wrote; those of other libraries are moved by `/migrate`.
+- **Platforms.** Every export works on iOS and Android. On the web every call throws `UNSUPPORTED`; so does a call in an app without the native module (Expo Go, or an app not rebuilt after the install), with a message that says how to fix it. Importing the package never fails.

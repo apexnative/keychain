@@ -1,0 +1,75 @@
+name: Docs
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - package.json
+      - .github/workflows/docs.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - package.json
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+# The site at keychain.apexnative.dev (the domain is set in the repository's Pages settings; docs/static/CNAME keeps
+# it with the site). A pull request that changes the docs builds the site, so a broken link fails there; main also
+# publishes it. package.json is here for the version: a release changes the version and the banner of the site.
+# The API reference is written by hand, so the site needs nothing of the package but its version.
+permissions: {}
+
+# A newer push cancels the older run: the site it would publish is already out of date.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      # The site is a Yarn project of its own: Node.js is enough, the package's dependencies aren't needed.
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install the site's dependencies
+        run: yarn --cwd docs install --immutable
+
+      - name: Build the site
+        run: yarn --cwd docs build
+
+      - name: Upload the site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/build
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    permissions:
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

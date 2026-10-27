@@ -1,0 +1,71 @@
+---
+title: migrateFromExpoSecureStore
+description: 'Moves the items of expo-secure-store into this package, under the keys they had. It never shows a prompt; items stored with requireAuthentication are left for migrateItem.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="migrateFromExpoSecureStore" from="@apexnative/keychain/migrate" />
+
+expo-secure-store keeps its items where this package doesn't look: Keychain items of its own on iOS, its own preferences and Keystore keys on Android. This function reads them, writes each under the same key into a storage of this package, and reports what it did.
+
+## Usage {#usage}
+
+```ts title="src/storage/migrate.ts"
+import { migrateFromExpoSecureStore } from '@apexnative/keychain/migrate';
+
+const report = await migrateFromExpoSecureStore({ removeSource: true });
+// { migrated: ['accessToken', 'refreshToken'], skipped: [], warnings: [] }
+```
+
+`SecureStore.getItemAsync('accessToken')` becomes `keychain.getItem('accessToken')`.
+
+## Signature {#signature}
+
+```ts
+function migrateFromExpoSecureStore(
+  options?: MigrateFromExpoSecureStoreOptions
+): Promise<MigrationReport>;
+```
+
+<Facts returns="Promise<MigrationReport>" prompt="Never: a protected item is skipped as `requiresAuth`" throws="`INVALID_ARGUMENT` for options that aren't valid; a failure to list the items. A failure of one item is in the report" />
+
+### Parameters {#parameters}
+
+<Params
+  items={[
+    { name: 'keychainService', type: 'string | string[]', text: 'The `keychainService` option your app passed to expo-secure-store, one or several. Without it, the library\'s default: `app` on iOS, `key_v1` on Android. With it, those and not the default.' },
+    { name: 'into', type: 'Keychain', text: 'The storage that gets the items. Default: [`keychain`](/api/storage/keychain). The items are written with its options.' },
+    { name: 'removeSource', type: 'boolean', default: 'false', text: 'Delete each old item once the new one is written. With `false`, it is marked as moved and kept; a later run with `true` deletes it, if the new item is still there.' },
+    { name: 'accessGroup', type: 'string', text: 'iOS: move only the items of this access group. Default: every group the app can read.' },
+  ]}
+/>
+
+### Returns {#returns}
+
+A [MigrationReport](./types#migrationreport). Its keys are the items' keys.
+
+## Notes {#notes}
+
+- **Several `keychainService` values become one storage.** Items of different services go to the same `into` under their keys; when two services have the same key, the second is skipped as `exists`. Move each service into a storage of its own when that matters:
+
+  ```ts
+  import { createKeychain } from '@apexnative/keychain';
+
+  await migrateFromExpoSecureStore({ keychainService: 'auth', into: createKeychain({ service: 'auth' }) });
+  ```
+
+- **Protected items** (`requireAuthentication: true`) are skipped as `requiresAuth`: reading them needs the prompt. Move them with [`migrateItem`](./migrateItem).
+- **Nothing is overwritten**: a key that is taken in `into` is skipped as `exists`.
+- **Run it before expo-secure-store is used** in this launch, or after it is removed, when `removeSource` is `true`: two libraries shouldn't work on the same items at once.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'From expo-secure-store', text: 'The move, step by step.', to: '/docs/migration/from-expo-secure-store' },
+    { name: 'migrateItem', text: 'Moves one protected item, with a prompt.', to: '/api/migrate/migrateItem' },
+    { name: 'MigrationReport', text: 'What the report holds.', to: '/api/migrate/types#migrationreport' },
+  ]}
+/>

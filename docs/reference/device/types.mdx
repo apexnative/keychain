@@ -1,0 +1,41 @@
+---
+title: Types of device capabilities
+sidebar_label: Types
+description: 'What canUseAccessControl answers.'
+hide_title: true
+---
+
+import { ApiHeader, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Types" importName="type AccessControlAvailability" />
+
+## AccessControlAvailability {#accesscontrolavailability}
+
+```ts
+type AccessControlAvailability =
+  | { available: true }
+  | {
+      available: false;
+      reason: 'noHardware' | 'notEnrolled' | 'passcodeNotSet' | 'unsupportedOS';
+    };
+```
+
+Whether an access control can protect an item on this device now, and why not when it can't: the answer of [`canUseAccessControl`](./canUseAccessControl). Check `available` first; TypeScript then knows whether there is a `reason`.
+
+<Params
+  label="Field"
+  items={[
+    { name: 'available', type: 'boolean', required: true, text: 'Whether a write with the access control would succeed now.' },
+    { name: 'reason', type: 'string', text: 'Only when `available` is `false`. `\'unsupportedOS\'`: a value with the passcode on Android 7–10. `\'noHardware\'`: no biometric sensor that can unlock a key. `\'passcodeNotSet\'`: no passcode, PIN or pattern. `\'notEnrolled\'`: no face or finger enrolled. When several are true, the first in this order.' },
+  ]}
+/>
+
+A temporary lockout of the biometrics is not a reason: the answer stays `available`, and a read meets the lockout as `LOCKOUT`.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'canUseAccessControl', text: 'The reasons, and what each write would throw.', to: '/api/device/canUseAccessControl#reasons' },
+  ]}
+/>

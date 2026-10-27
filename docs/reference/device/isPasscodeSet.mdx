@@ -1,0 +1,40 @@
+---
+title: isPasscodeSet
+description: 'Whether the device has a passcode, PIN or pattern: the screen lock every protected item needs. It never shows a prompt.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="isPasscodeSet" />
+
+## Usage {#usage}
+
+```ts
+import { isPasscodeSet } from '@apexnative/keychain';
+
+if (!(await isPasscodeSet())) {
+  showHint('Set a passcode on this device to protect your account with it.');
+}
+```
+
+## Signature {#signature}
+
+```ts
+function isPasscodeSet(): Promise<boolean>;
+```
+
+<Facts returns="Promise<boolean>" prompt="Never" />
+
+`true` when the device has a screen lock: a passcode on iOS, a PIN, a pattern or a password on Android (`KeyguardManager.isDeviceSecure`).
+
+Every `accessControl` but `'none'` needs it, and so does `accessible: 'whenPasscodeSetThisDeviceOnly'`: without one, their writes fail with `PASSCODE_NOT_SET`. To ask about one protection, [`canUseAccessControl`](./canUseAccessControl) is more precise: it answers `passcodeNotSet` among its other reasons.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'canUseAccessControl', text: 'Whether a protection can be used now.', to: '/api/device/canUseAccessControl' },
+    { name: 'Accessible', text: '`whenPasscodeSetThisDeviceOnly`.', to: '/api/options/Accessible' },
+  ]}
+/>

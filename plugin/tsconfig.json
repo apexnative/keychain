@@ -1,0 +1,23 @@
+{
+  // The check of the plugin and its tests (`yarn typecheck`); tsconfig.build.json compiles it.
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2019"],
+    "types": ["node", "jest"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    // `expo/config-plugins` is the documented import of a config plugin. Here, without `expo` installed, it is the package it
+    // re-exports.
+    "paths": {
+      "expo/config-plugins": ["../node_modules/@expo/config-plugins"]
+    }
+  },
+  "include": ["src", "__tests__"]
+}

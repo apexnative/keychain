@@ -1,0 +1,105 @@
+---
+title: A key for MMKV or SQLCipher
+description: 'Encrypt a local database with a random key that lives in the keychain, not in the code. Generating it once, choosing its protection, and what happens to it on a backup, a restore and a reinstall.'
+---
+
+An encrypted MMKV store or an SQLCipher database is only as safe as its key. A key written in the source code is the same in every copy of the app and can be read out of the bundle in minutes. The way to do it: generate a random key on the device the first time, keep it in the keychain, and read it from there at every launch.
+
+## Get or create the key {#get-or-create}
+
+```ts title="src/storage/databaseKey.ts"
+import 'react-native-get-random-values'; // crypto.getRandomValues; in Expo, expo-crypto's getRandomBytes
+import { Accessible, createKeychain } from '@apexnative/keychain';
+
+const keys = createKeychain({
+  service: 'storage.keys',
+  accessible: Accessible.AfterFirstUnlockThisDeviceOnly,
+});
+
+let pending: Promise<Uint8Array> | null = null;
+
+// One key per device, made the first time it is asked for.
+export function databaseKey(): Promise<Uint8Array> {
+  pending ??= (async () => {
+    const stored = await keys.getBytes('database');
+    if (stored) return stored;
+    const key = crypto.getRandomValues(new Uint8Array(32));
+    await keys.setBytes('database', key);
+    return key;
+  })();
+  return pending;
+}
+```
+
+- **Bytes, not a string.** `setBytes` keeps the 32 random bytes as they are; encode them only where a library wants a string.
+- **One promise.** Two parts of the app may ask for the key at the same moment at the first launch; sharing the promise keeps them from making two different keys.
+- **A random source made for keys.** `crypto.getRandomValues` (from `react-native-get-random-values`) or `expo-crypto` use the system's secure generator. `Math.random` doesn't.
+
+## Choose its protection {#protection}
+
+`afterFirstUnlockThisDeviceOnly` fits most apps:
+
+- `afterFirstUnlock`: background work (a sync, a notification handler) can open the database once the phone has been unlocked after a restart.
+- `ThisDeviceOnly`: the key never goes to iCloud Keychain or to a backup restored on another iPhone.
+- No `accessControl`: the database opens at launch without a prompt. If its content needs the user's presence on every launch, add `accessControl: AccessControl.BiometryAnyOrPasscode`; then open the database after the prompt, never in the background.
+
+## Hand it to the database {#databases}
+
+Each library takes its key in its own form. The snippets use the APIs of the libraries at the time of writing; check their docs for the version you have.
+
+**MMKV** takes a string key of up to 16 bytes. Turn 16 random bytes into 16 characters from a 64-character alphabet (96 bits):
+
+```ts title="src/storage/mmkv.ts"
+import { createMMKV } from 'react-native-mmkv';
+import { databaseKey } from './databaseKey';
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+export async function openStore() {
+  const key = await databaseKey();
+  const encryptionKey = Array.from(key.subarray(0, 16), (byte) => ALPHABET[byte % 64]).join('');
+  return createMMKV({ id: 'user-data', encryptionKey });
+}
+```
+
+**SQLCipher** (for example through `op-sqlite` with SQLCipher turned on) takes a passphrase. A hex string of the 32 bytes works:
+
+```ts title="src/storage/sqlite.ts"
+import { open } from '@op-engineering/op-sqlite';
+import { databaseKey } from './databaseKey';
+
+const hex = (bytes: Uint8Array) =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+
+export async function openDatabase() {
+  return open({ name: 'app.sqlite', encryptionKey: hex(await databaseKey()) });
+}
+```
+
+## Backups, restores and reinstalls {#lifecycle}
+
+The key and the database file don't always travel together, and the app has to expect a database it can't open.
+
+| Event | The key | The database file | So |
+| --- | --- | --- | --- |
+| Restore of a backup on a new device | Stays behind: `ThisDeviceOnly` on iOS; on Android, Keystore keys never leave a device | Comes back if the backup holds it | The file can't be opened |
+| Reinstall on iOS | Stays: Keychain items outlive the app, unless [`clearOnReinstall`](./reinstall) | Deleted with the app | A new database with the old key; harmless |
+| Reinstall on Android | Deleted with the app | Deleted with the app | A clean start |
+
+Two ways to handle the first row:
+
+- **Keep the file out of backups.** Put it where the system doesn't back up: excluded from backup on iOS (`isExcludedFromBackupKey`), in `noBackupFilesDir` or out of the backup rules on Android. Then a restore starts with no file and no key.
+- **Treat the database as a cache.** If the key is missing but a file is there, or the library can't open the file with the key, delete the file and build it again from the server.
+
+```ts
+const stored = await keys.getBytes('database');
+if (!stored && (await databaseFileExists())) {
+  await deleteDatabaseFile(); // a file from a backup, without its key
+}
+```
+
+## Don'ts {#donts}
+
+- Don't derive the key from something on the device (the device id, the user id): anyone who knows the rule can compute it.
+- Don't put the key, or any part of it, in a key name or a `label`: both are readable without a prompt.
+- Don't log it or send it anywhere: every copy of the key outside the keychain is another place to steal it from.

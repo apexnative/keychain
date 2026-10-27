@@ -1,0 +1,98 @@
+---
+title: migrateItem
+description: 'Moves one item of react-native-keychain or expo-secure-store, with the prompt when it is protected. For the items migrateFrom… skipped as requiresAuth, at a moment the user expects Face ID.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="migrateItem" from="@apexnative/keychain/migrate" />
+
+`migrateFromReactNativeKeychain` and `migrateFromExpoSecureStore` never show a prompt, so they leave a protected item where it is and report it as `requiresAuth`. `migrateItem` moves one such item: it shows the prompt of the old item, writes the value into this package with the protection you give, and finishes the old item.
+
+## Usage {#usage}
+
+```ts title="src/auth/unlock.ts"
+import { AccessControl, Accessible } from '@apexnative/keychain';
+import { migrateItem } from '@apexnative/keychain/migrate';
+
+// On the screen that used to unlock rnk's protected password with Face ID.
+const report = await migrateItem(
+  { library: 'reactNativeKeychain', service: 'auth' },
+  {
+    prompt: { title: 'Unlock your account' },
+    setOptions: {
+      accessible: Accessible.WhenUnlockedThisDeviceOnly,
+      accessControl: AccessControl.BiometryCurrentSet,
+    },
+    removeSource: true,
+  }
+);
+
+if (report.migrated.length === 1) {
+  // The password is now the credentials of createKeychain({ service: 'auth' }).
+}
+```
+
+## Signature {#signature}
+
+```ts
+function migrateItem(item: MigrationItem, options?: MigrateItemOptions): Promise<MigrationReport>;
+```
+
+<Facts returns="Promise<MigrationReport>" prompt="When the old item is protected: its own prompt" throws="`INVALID_ARGUMENT` for an item or options that aren't valid. A canceled prompt, and any failure of the move, is in the report" />
+
+### Parameters {#parameters}
+
+<Params
+  items={[
+    { name: 'item', type: 'MigrationItem', required: true, text: 'Which old item. `{ library: \'reactNativeKeychain\', service? }` for a generic password (without `service`: rnk\'s default), `{ library: \'reactNativeKeychain\', server }` for internet credentials, `{ library: \'expoSecureStore\', key, keychainService? }` for an item of expo-secure-store. See [MigrationItem](./types#migrationitem).' },
+    { name: 'options', type: 'MigrateItemOptions', text: 'Where and how the new item is written. See below.' },
+  ]}
+/>
+
+<Params
+  label="Option"
+  items={[
+    { name: 'prompt', type: 'Prompt', text: 'The texts of the prompt the old item shows. See [Prompt](/api/options/types#prompt).' },
+    { name: 'setOptions', type: 'SetOptions', text: 'How the new item is written: `accessible`, `accessControl`, `authValidity`, `synchronizable`, `android`; no `label`.' },
+    { name: 'into', type: 'Keychain', text: 'The storage that gets internet credentials and items of expo-secure-store. Default: [`keychain`](/api/storage/keychain). A generic password goes to the storage of its service.' },
+    { name: 'removeSource', type: 'boolean', default: 'false', text: 'Delete the old item once the new one is written; else mark it as moved.' },
+    { name: 'accessGroup', type: 'string', text: 'iOS: look for the item in this access group only.' },
+  ]}
+/>
+
+### Returns {#returns}
+
+A [MigrationReport](./types#migrationreport) of the one item: its key in `migrated`, or in `skipped` with a reason.
+
+## Outcomes {#outcomes}
+
+| What happened | The report |
+| --- | --- |
+| Moved | `migrated: [key]` |
+| The user canceled the prompt | `skipped: [{ key, kind, reason: 'error', error }]`, `error.code` is `USER_CANCELED` |
+| Another prompt outcome: a lockout, a failed scan | `skipped` with `reason: 'error'` and the prompt's code |
+| No such item | `skipped` with `reason: 'notFound'` |
+| The key is taken in this package | `skipped` with `reason: 'exists'`, nothing overwritten |
+
+A canceled prompt is no exception: the user can try again, and the old item is still there for the next call. An item that isn't protected moves without a prompt, as with `migrateFrom…`.
+
+```ts
+import { KeychainErrorCode, isKeychainError } from '@apexnative/keychain/migrate';
+
+const [skipped] = report.skipped;
+if (skipped && isKeychainError(skipped.error, KeychainErrorCode.UserCanceled)) {
+  showPasswordForm(); // and offer the move again next time
+}
+```
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'migrateFromReactNativeKeychain', text: 'Moves every item it can without a prompt.', to: '/api/migrate/migrateFromReactNativeKeychain' },
+    { name: 'Types', text: '`MigrationItem`, `MigrateItemOptions`, `MigrationReport`.', to: '/api/migrate/types' },
+    { name: 'From react-native-keychain', text: 'When to move the protected items.', to: '/docs/migration/from-react-native-keychain#protected' },
+  ]}
+/>

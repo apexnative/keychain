@@ -1,0 +1,68 @@
+---
+title: Synchronous API
+description: 'getItemSync and its siblings read and write on the JS thread, for items without a prompt. They never show one and never block the JS thread on the user.'
+---
+
+Some values are needed before anything renders: the token that decides between the sign-in screen and the home screen, the id of the environment, a flag. For those, the storage has synchronous methods that return the value at once, without a promise.
+
+```ts
+const token = keychain.getItemSync('accessToken'); // string | null
+keychain.setItemSync('lastEnvironment', 'staging');
+keychain.hasItemSync('accessToken'); // boolean
+keychain.removeItemSync('lastEnvironment');
+```
+
+| Method | Async twin |
+| --- | --- |
+| `getItemSync(key)` | `getItem` |
+| `setItemSync(key, value, options?)` | `setItem` |
+| `hasItemSync(key)` | `hasItem` |
+| `removeItemSync(key)` | `removeItem` |
+
+The sync methods work with strings and take the same keys and options; bytes, credentials, item info, listing and clearing are async only.
+
+## Never a prompt {#no-prompt}
+
+A synchronous method runs on the JS thread. If it showed a prompt, the JS thread would stop until the user looked at the phone: no rendering, no timers, no events. So a sync method never shows one: on an item that needs a prompt it throws `AUTH_REQUIRED` at once.
+
+```ts
+vault.getItemSync('refreshToken');
+// KeychainError: AUTH_REQUIRED — read it with getItem, which shows the prompt
+```
+
+Use the sync methods only for items without `accessControl`, and keep the protected items behind the async `getItem`.
+
+## Errors are thrown {#errors}
+
+A sync method reports a failure by throwing the same `KeychainError` as the async one, so wrap a call that can fail in `try`:
+
+```ts
+function readEnvironment(): string {
+  try {
+    return keychain.getItemSync('lastEnvironment') ?? 'production';
+  } catch (error) {
+    // INTERACTION_NOT_ALLOWED: a `whenUnlocked` item, read while the device is locked
+    return 'production';
+  }
+}
+```
+
+`null` still means that nothing is stored.
+
+## In order with the async calls {#order}
+
+A sync call runs after the async calls made before it, on iOS and on Android: the JS thread waits until their work in the keychain is done, then the sync call runs. So a sync read sees a write that wasn't awaited:
+
+```ts
+keychain.setItem('lastEnvironment', 'staging'); // not awaited
+keychain.getItemSync('lastEnvironment'); // 'staging'
+```
+
+The wait is for that storage work only, never for the user: an async read that waits for its prompt doesn't hold up a sync call. But a sync call made behind many async calls waits for all of them, on the JS thread.
+
+## When to use them {#when}
+
+- **At startup**, to choose the first screen without a loading state.
+- **In code that can't await**, such as the initializer of a store.
+
+Everywhere else, prefer the async methods: they run on the package's own queue, off the JS thread, and a read there doesn't hold up rendering. A sync call takes the time of one Keychain or Keystore operation on the JS thread, plus the async calls queued before it: short for a small value at startup, and it adds up in a loop.

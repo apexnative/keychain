@@ -1,0 +1,73 @@
+---
+title: Sharing between apps
+description: 'On iOS, apps and extensions of the same team can share items through a keychain access group. Setting up the entitlement, writing to the group, and reading the item from Swift. Android has no safe equivalent.'
+---
+
+import { Os } from '@site/src/components/Intro';
+
+On iOS <Os name="iOS" />, apps and app extensions signed by the same team can share Keychain items through an access group. A token stored by the app can be read by its widget, its share extension, or another app of the same developer.
+
+## Set up the access group {#entitlement}
+
+The group is an entitlement, `keychain-access-groups`, with ids that start with the team id.
+
+**Bare app.** In Xcode, under *Signing & Capabilities* of every target that shares the items, add *Keychain Sharing* and the same group, for example `com.example.shared`. Xcode writes the entitlement as `$(AppIdentifierPrefix)com.example.shared`.
+
+**Expo.** List the groups in the config plugin, without the team prefix:
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [["@apexnative/keychain", { "accessGroups": ["com.example.shared"] }]]
+  }
+}
+```
+
+The plugin writes `$(AppIdentifierPrefix)com.example.shared` into the entitlement, after the groups that are there already and the app's own group, `$(AppIdentifierPrefix)<bundle id>`. The first group of the list is where an app's items go when no `accessGroup` is given, so the app's items stay where they were. See [Config plugin](/api/plugin#accessGroups). Each extension target needs the group in its own entitlements too.
+
+## Write to the group {#write}
+
+In code the group is the full id, with the team id in front:
+
+```ts title="src/shared.ts"
+import { createKeychain } from '@apexnative/keychain';
+
+export const shared = createKeychain({
+  service: 'shared',
+  accessGroup: 'ABCDE12345.com.example.shared',
+});
+
+await shared.setItem('accessToken', token);
+```
+
+Every app and extension with the group in its entitlement now finds the item under the service `shared` and the key `accessToken`. A group the app's entitlement doesn't list fails with `MISSING_ENTITLEMENT`.
+
+## Read it from an extension {#extension}
+
+A widget or an extension written in Swift reads the item with the Security framework. The package keeps an item as a generic password: the service is `kSecAttrService`, the key is `kSecAttrAccount`, and a string value is its UTF-8 bytes in `kSecValueData`.
+
+```swift title="WidgetToken.swift"
+import Foundation
+import Security
+
+func sharedToken() -> String? {
+  let query: [String: Any] = [
+    kSecClass as String: kSecClassGenericPassword,
+    kSecAttrService as String: "shared",
+    kSecAttrAccount as String: "accessToken",
+    kSecAttrAccessGroup as String: "ABCDE12345.com.example.shared",
+    kSecUseDataProtectionKeychain as String: true,
+    kSecReturnData as String: true,
+  ]
+  var result: AnyObject?
+  guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+        let data = result as? Data else { return nil }
+  return String(data: data, encoding: .utf8)
+}
+```
+
+An item behind biometrics shows the prompt in the extension too, where the system allows one; keep the items an extension reads in the background without `accessControl`, and with `afterFirstUnlock` so they are readable while the phone is locked.
+
+## Android {#android}
+
+Android has no safe equivalent of a keychain access group <Os name="Android" />: Keystore keys belong to one app. On Android the package ignores `accessGroup`, so shared code needs no `Platform.select`, and each app keeps its own items. To share a session between Android apps, get it from your server in each app, or use the platform's account and credential APIs.

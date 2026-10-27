@@ -1,0 +1,50 @@
+{
+  // Written out in full, without `extends`, so that every IDE reads it the same way as tsc. The settings are those of
+  // @react-native/typescript-config, plus the library resolved from its sources.
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "lib": [
+      "es2019",
+      "es2020.bigint",
+      "es2020.date",
+      "es2020.number",
+      "es2020.promise",
+      "es2020.string",
+      "es2020.symbol.wellknown",
+      "es2021.promise",
+      "es2021.string",
+      "es2021.weakref",
+      "es2022.array",
+      "es2022.error",
+      "es2022.object",
+      "es2022.string",
+      "es2024.promise",
+      "esnext.promise"
+    ],
+    "types": [],
+    "allowJs": true,
+    "jsx": "react-native",
+    "noEmit": true,
+    "isolatedModules": true,
+    "strict": true,
+    "moduleResolution": "bundler",
+    // The library sources use the legacy React Native types (see ../tsconfig.json).
+    "customConditions": ["react-native", "react-native-legacy-deep-imports"],
+    "allowImportingTsExtensions": true,
+    "allowArbitraryExtensions": true,
+    "resolveJsonModule": true,
+    "resolvePackageJsonImports": false,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": false,
+    // The library from its sources, as Metro takes it.
+    "paths": {
+      "@apexnative/keychain": ["../src/index.ts"],
+      "@apexnative/keychain/*": ["../src/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["**/node_modules", "**/Pods"]
+}

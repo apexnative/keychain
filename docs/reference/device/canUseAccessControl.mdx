@@ -1,0 +1,73 @@
+---
+title: canUseAccessControl
+description: 'Whether an item can be written with an access control on this device now, and why not when it can''t. Ask before you offer Face ID in the UI; it never shows a prompt.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="canUseAccessControl" />
+
+A write of an item whose protection the device can't give fails, and never stores the item with less. `canUseAccessControl` asks the same question first, without writing anything: a switch "Sign in with Face ID" shows only when the answer is `available`, and the reason says what to tell the user otherwise.
+
+## Usage {#usage}
+
+```ts title="src/auth/biometrics.ts"
+import { AccessControl, canUseAccessControl } from '@apexnative/keychain';
+
+const check = await canUseAccessControl(AccessControl.BiometryCurrentSet);
+if (check.available) {
+  showBiometricSwitch();
+} else if (check.reason === 'notEnrolled') {
+  showHint('Add a face or a fingerprint in Settings to sign in with it.');
+} else {
+  hideBiometricSwitch(); // 'noHardware', 'passcodeNotSet' or 'unsupportedOS'
+}
+```
+
+## Signature {#signature}
+
+```ts
+function canUseAccessControl(accessControl: AccessControl): Promise<AccessControlAvailability>;
+```
+
+<Facts returns="Promise<AccessControlAvailability>" prompt="Never" throws="`MISSING_USAGE_DESCRIPTION` (iOS, a biometric value without `NSFaceIDUsageDescription`); `INVALID_ARGUMENT` for a value that isn't an `AccessControl`" />
+
+### Parameters {#parameters}
+
+<Params
+  items={[
+    { name: 'accessControl', type: 'AccessControl', required: true, text: 'The protection to ask about, one of [AccessControl](/api/options/AccessControl). `\'none\'` is always available.' },
+  ]}
+/>
+
+### Returns {#returns}
+
+`{ available: true }`, or `{ available: false, reason }`. See [AccessControlAvailability](./types#accesscontrolavailability).
+
+## The reasons {#reasons}
+
+| Reason | Means | The write would throw |
+| --- | --- | --- |
+| `unsupportedOS` | The value needs a newer OS: a value with the passcode on Android 7–10 | `UNSUPPORTED` |
+| `noHardware` | No biometric sensor, or none that can unlock a key (Android: Class 3) | `BIOMETRY_NOT_AVAILABLE` |
+| `passcodeNotSet` | The device has no passcode, PIN or pattern, which every value but `none` needs | `PASSCODE_NOT_SET` |
+| `notEnrolled` | A sensor, but no face or finger enrolled | `BIOMETRY_NOT_ENROLLED` |
+
+When several are true, the reason is the first of them in this order: `unsupportedOS`, `noHardware`, `passcodeNotSet`, `notEnrolled`. The answer for a value is the answer its write would get, on both platforms.
+
+- **`biometryCurrentSet` and `biometryCurrentSetOrPasscode`** need enrolled biometrics: without them the answer is `notEnrolled`, even when the passcode is set. `biometryAnyOrPasscode` and `passcode` need only the passcode.
+- **A lockout is not a reason.** After too many failed scans the biometrics is locked for a while, but an item can still be written: the answer is `available`, and a read meets the lockout as `LOCKOUT`.
+- **`MISSING_USAGE_DESCRIPTION`.** On an iPhone with Face ID and an app without `NSFaceIDUsageDescription` in its Info.plist, a biometric value can't be asked about: the call rejects, as the write would. It is a mistake in the app's setup, and it should be loud. Add the key, or the config plugin's [`faceIDPermission`](/api/plugin#faceIDPermission).
+
+The answer is for now: the user can enroll a face or remove the passcode later. Ask again when the app comes to the foreground, and still handle the codes of the write.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'AccessControl', text: 'The values, and what each needs from the device.', to: '/api/options/AccessControl#needs' },
+    { name: 'getBiometryTypes', text: 'Which biometrics, to name the feature.', to: '/api/device/getBiometryTypes' },
+    { name: 'Protection', text: 'Never weaker: what a write does on a device that can\'t.', to: '/docs/fundamentals/protection#never-weaker' },
+  ]}
+/>

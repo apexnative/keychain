@@ -1,0 +1,128 @@
+---
+title: '@apexnative/keychain/jest'
+sidebar_label: Overview
+description: 'The package for Jest: the same API over a store in memory, with the same checks and the same errors, on a simulated device that the tests control through keychainMock.'
+hide_title: true
+---
+
+import { ApiHeader, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Overview" />
+
+Jest runs without native code, so the package can't reach the iOS Keychain or the Android Keystore there. `@apexnative/keychain/jest` is the package's own API over a native module that lives in memory: the same JavaScript checks every key, value and option, merges a store's options with a call's, and turns every failure into the same `KeychainError`. Only the native side is simulated, as a device the tests set up and drive with [`keychainMock`](/api/jest/keychainMock).
+
+## Usage {#usage}
+
+Replace the package with the mock, in a setup file or at the top of a test file:
+
+```js title="jest.setup.js"
+jest.mock('@apexnative/keychain', () => require('@apexnative/keychain/jest'));
+```
+
+```js title="jest.config.js"
+module.exports = {
+  // …the preset and options your app already has
+  setupFiles: ['./jest.setup.js'],
+};
+```
+
+The app's code keeps importing `@apexnative/keychain`; the tests import `keychainMock` from `@apexnative/keychain/jest`. Both names give the same module, so the controls act on the items the app's code reads and writes:
+
+```ts title="src/session.test.ts"
+import { keychainMock } from '@apexnative/keychain/jest';
+import { loadSession, saveSession } from './session';
+
+beforeEach(() => keychainMock.reset());
+
+test('a saved session loads again', async () => {
+  await saveSession('token-1');
+  expect(await loadSession()).toBe('token-1');
+});
+```
+
+The items live in the module, so they last as long as the test file's modules do. [`reset()`](/api/jest/keychainMock#reset) before every test gives each one an empty keychain and the default device.
+
+## What it exports {#exports}
+
+Everything the package exports, with the same names and types, and three more names of its own:
+
+| Export | What it is |
+| --- | --- |
+| `keychain`, `createKeychain` | The stores, over the memory. Their items are kept per service. |
+| `getBiometryTypes`, `canUseAccessControl`, `isPasscodeSet`, `getBiometryState`, `getHardwareSecurityLevel` | The answers of the [simulated device](#device). |
+| `Accessible`, `AccessControl`, `KeyStorage`, `BiometryType`, `HardwareSecurityLevel`, `KeychainErrorCode` | The constants: the same objects as the package's. |
+| `KeychainError`, `isKeychainError` | The same class and check: an error of the mock is an `instanceof KeychainError`. |
+| The types of the package | `Keychain`, `KeychainOptions`, `SetOptions`, `ItemInfo` and the rest, and `KeychainErrorDetails`. |
+| [`keychainMock`](/api/jest/keychainMock) | The controls of the device, the prompts and the old items. |
+| [`migrate`](#migrate) | `@apexnative/keychain/migrate` over the same memory. |
+| [`compat`](#compat) | `@apexnative/keychain/compat` over the same memory. |
+| [`KeychainMock`, `MockDevice`, `MockPrompt`, `MockMigrationItem`, `MockMigrationSource`](/api/jest/types) | The types of the controls. |
+
+## /migrate {#migrate}
+
+`migrate` holds [`migrateFromReactNativeKeychain`](/api/migrate/migrateFromReactNativeKeychain), `migrateFromExpoSecureStore` and [`migrateItem`](/api/migrate/migrateItem), over the same memory as `keychain`, and `KeychainError`, `KeychainErrorCode` and `isKeychainError`, as the entry point exports them. Mock the entry point with it when the app migrates:
+
+```js title="jest.setup.js"
+jest.mock('@apexnative/keychain', () => require('@apexnative/keychain/jest'));
+jest.mock('@apexnative/keychain/migrate', () => require('@apexnative/keychain/jest').migrate);
+```
+
+The old items it moves are the ones a test plants with [`keychainMock.addMigrationSource`](/api/jest/keychainMock#addMigrationSource); [`migrationSources()`](/api/jest/keychainMock#migrationSources) shows what is left of them after the run. Where nothing is named, the mock looks where the libraries keep their items on iOS: react-native-keychain's generic password under the device's `defaultService`, expo-secure-store's items under the `keychainService` `app`.
+
+## /compat {#compat}
+
+`compat` holds the functions and the constants of [`@apexnative/keychain/compat`](/api/compat/overview), with `KeychainError`, `KeychainErrorCode` and `isKeychainError`, and the same object as `default`, over the same memory:
+
+```js title="jest.setup.js"
+jest.mock('@apexnative/keychain', () => require('@apexnative/keychain/jest'));
+jest.mock('@apexnative/keychain/compat', () => require('@apexnative/keychain/jest').compat);
+```
+
+Both `import * as Keychain from '@apexnative/keychain/compat'` and `import Keychain from '@apexnative/keychain/compat'` work with it. A generic password the app writes through `compat` is the credentials of a store, so a test can check it with `keychain.getCredentials()` too.
+
+## The simulated device {#device}
+
+Until a test changes it with [`setDevice`](/api/jest/keychainMock#setDevice), the mock is an iPhone with Face ID enrolled and a passcode:
+
+| Field of [`MockDevice`](/api/jest/types#mockdevice) | Default | What it changes |
+| --- | --- | --- |
+| `defaultService` | `'dev.apexnative.keychain.mock'` | The service of `keychain` |
+| `biometryTypes` | `['faceID']` | What `getBiometryTypes` returns; `[]` is a device without biometric hardware |
+| `biometryEnrolled` | `true` | Whether biometry is enrolled |
+| `passcodeSet` | `true` | Whether the device has a passcode; biometry needs one too, as on a phone |
+| `faceIDUsageDescription` | `true` | Whether the app has `NSFaceIDUsageDescription` |
+| `androidApi` | `null` | The Android API level; `null` is a device that isn't an Android one |
+| `hardwareSecurityLevel` | `null` | What `getHardwareSecurityLevel` returns, and where an item's key lives |
+
+## What it simulates {#models}
+
+- **The checks.** Keys, values and options go through the package's own code: a key with U+0000, an unknown option or `biometryCurrentSet` with `authValidity` throw `INVALID_ARGUMENT` exactly as they do in the app.
+- **Protection at write time.** A write the device can't protect throws, and nothing is stored: `BIOMETRY_NOT_AVAILABLE` without biometric hardware, `BIOMETRY_NOT_ENROLLED` without enrolled biometry, `PASSCODE_NOT_SET` for a passcode option or `whenPasscodeSetThisDeviceOnly` without a passcode. `canUseAccessControl` answers with the reasons in the package's order.
+- **Face ID without its description.** With `faceIDUsageDescription: false` on a Face ID device, a write with a biometric `accessControl` and `canUseAccessControl` for one reject with `MISSING_USAGE_DESCRIPTION`.
+- **Old Android.** With `androidApi` below 30, the passcode variants are `unsupportedOS`, and a write with one of them, or with `authValidity` above 0, throws `UNSUPPORTED`.
+- **The key's hardware.** With a `hardwareSecurityLevel`, `getItemInfo` reports where each item's key lives, and `strongboxRequired` throws `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.
+- **Prompts.** A read of a protected item records a prompt and succeeds, or fails with the code a test queued. A sync read of it throws `AUTH_REQUIRED`.
+- **New biometry.** After [`changeBiometry()`](/api/jest/keychainMock#changeBiometry), items written with `biometryCurrentSet` or `biometryCurrentSetOrPasscode` throw `KEY_INVALIDATED` and are deleted.
+- **Bytes and text.** An item written with `setBytes` that isn't UTF-8 throws `INVALID_ARGUMENT` when read with `getItem`.
+- **The items' info.** `getItemInfo` returns the label and the options of the write, and `createdAt` and `modifiedAt` that grow with every write.
+
+## What it doesn't {#limits}
+
+- **The lock state.** Reads never fail with `INTERACTION_NOT_ALLOWED`, whatever `accessible` says.
+- **The reuse window.** With [`authValidity`](/api/options/KeychainOptions#auth-validity), every protected read still records a prompt.
+- **Access groups.** Items are kept per service: [`accessGroup`](/api/options/KeychainOptions#access-group) changes nothing, and `MISSING_ENTITLEMENT` never happens.
+- **iCloud Keychain.** `synchronizable` is kept and reported by `getItemInfo`, nothing more.
+- **The prompt itself.** Prompts don't wait for each other, `NO_ACTIVITY` never happens, and the system ends a prompt only when a test queues it with [`failNextAuthentication`](/api/jest/keychainMock#failNextAuthentication).
+- **Reinstalls.** `clearOnReinstall` is a setting of the app, not of the mock.
+
+The [Testing](/docs/guides/testing#e2e) guide covers the end-to-end tests that check these on a simulator and an emulator.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'keychainMock', text: 'Every control of the simulated device, with examples.', to: '/api/jest/keychainMock' },
+    { name: 'Types', text: '`MockDevice`, `MockPrompt` and the old items of a migration.', to: '/api/jest/types' },
+    { name: 'Testing', text: 'The guide: sign-in tests, prompts, failures, a migration.', to: '/docs/guides/testing' },
+  ]}
+/>

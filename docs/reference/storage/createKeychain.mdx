@@ -1,0 +1,135 @@
+---
+title: createKeychain
+description: 'A storage of its own service, with defaults for every call: the protection of its items, the texts of its prompt, iCloud and the access group. The options are checked at once; the keychain is not touched until the first call.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="createKeychain" />
+
+A storage is a service and its defaults. Make one per kind of secret: a vault behind biometrics, the key of a database, a few settings in iCloud Keychain. Each has its own items; `clear()` and `getAllKeys()` see only them.
+
+## Usage {#usage}
+
+```ts title="src/vault.ts"
+import { AccessControl, Accessible, createKeychain } from '@apexnative/keychain';
+
+export const vault = createKeychain({
+  service: 'vault',
+  accessible: Accessible.WhenUnlockedThisDeviceOnly,
+  accessControl: AccessControl.BiometryCurrentSet,
+  prompt: { title: 'Unlock your account', cancel: 'Use password' },
+});
+
+await vault.setItem('refreshToken', token); // no prompt
+const value = await vault.getItem('refreshToken'); // Face ID, then the value
+```
+
+Make it once, at the top of a module, and import it where it is needed. Making a storage is cheap and doesn't touch the keychain, so two calls with the same service give two storages of the same items, not two copies of them.
+
+The options are **defaults**: a call can override them for one item or one read.
+
+```ts
+// One item that the passcode also opens.
+await vault.setItem('pin', pin, { accessControl: AccessControl.BiometryCurrentSetOrPasscode });
+
+// One read with its own prompt text; the cancel button stays 'Use password'.
+await vault.getItem('pin', { prompt: { title: 'Confirm the payment' } });
+```
+
+A read's `prompt` is merged with the storage's field by field: the call above keeps the storage's `cancel` and replaces only `title`. The `service` and the `accessGroup` belong to the storage and can't be changed by a call.
+
+## Signature {#signature}
+
+```ts
+function createKeychain(options?: KeychainOptions): Keychain;
+```
+
+<Facts returns="Keychain" prompt="Never: it doesn't touch the keychain" throws="`INVALID_ARGUMENT` on options that aren't valid, at once" />
+
+### Parameters {#parameters}
+
+<Params
+  items={[
+    {
+      name: 'options',
+      type: 'KeychainOptions',
+      text: 'The service and the defaults of the storage. Every key is optional; without options, the storage is the same as [`keychain`](/api/storage/keychain). Each key is explained on [KeychainOptions](/api/options/KeychainOptions).',
+    },
+  ]}
+/>
+
+| Key | Type | Default |
+| --- | --- | --- |
+| [`service`](/api/options/KeychainOptions#service) | `string` | The bundle identifier / the application id |
+| [`accessible`](/api/options/KeychainOptions#accessible) | `Accessible` | `'afterFirstUnlock'` |
+| [`accessControl`](/api/options/KeychainOptions#access-control) | `AccessControl` | `'none'` |
+| [`authValidity`](/api/options/KeychainOptions#auth-validity) | `number` | `0` |
+| [`synchronizable`](/api/options/KeychainOptions#synchronizable) | `boolean` | `false` |
+| [`accessGroup`](/api/options/KeychainOptions#access-group) | `string` | The app's default group |
+| [`prompt`](/api/options/KeychainOptions#prompt) | `Prompt` | The system's texts |
+| [`android`](/api/options/KeychainOptions#android) | `AndroidOptions` | `{ keyStorage: 'tee' }` |
+
+### Returns {#returns}
+
+A [`Keychain`](./methods). Its `service` is the one given, or the app's identifier when there is none.
+
+## Checked at once {#checks}
+
+`createKeychain` checks its options before it returns, with the same rules as a write, so a storage that can't hold a single valid item fails where it is made, not at its first `setItem`:
+
+```ts
+createKeychain({ accessControl: AccessControl.BiometryCurrentSet, authValidity: 30 });
+// KeychainError INVALID_ARGUMENT: accessControl 'biometryCurrentSet' can't be used with authValidity > 0 …
+
+createKeychain({ synchronizable: true, accessible: Accessible.AfterFirstUnlockThisDeviceOnly });
+// KeychainError INVALID_ARGUMENT: synchronizable can't be used with accessible 'afterFirstUnlockThisDeviceOnly' …
+
+createKeychain({ service: '' });
+// KeychainError INVALID_ARGUMENT: Invalid service: expected a non-empty string of up to 256 characters …
+```
+
+An option name that doesn't exist is an error too: `{ acessControl: 'biometryAny' }` throws `Invalid keychain options: unknown option 'acessControl'`. TypeScript catches it at compile time; the check at run time is for JavaScript and for options that come from elsewhere, because a misspelt `accessControl` would otherwise store a secret without protection.
+
+What can't be known in JavaScript is checked by the first write: whether the device has biometrics enrolled or a passcode. A storage of `biometryCurrentSet` on a phone without Face ID is made without an error; its `setItem` throws `BIOMETRY_NOT_ENROLLED`. Check with [`canUseAccessControl`](/api/device/canUseAccessControl) before you offer the feature.
+
+## Several storages {#several}
+
+```ts title="src/storage.ts"
+import { AccessControl, Accessible, createKeychain, keychain } from '@apexnative/keychain';
+
+// Tokens that background work reads: the defaults.
+export const session = keychain;
+
+// A refresh token that needs the user.
+export const vault = createKeychain({
+  service: 'auth.vault',
+  accessible: Accessible.WhenUnlockedThisDeviceOnly,
+  accessControl: AccessControl.BiometryCurrentSet,
+});
+
+// The key of the local database: no prompt, never leaves the device.
+export const keys = createKeychain({
+  service: 'storage.keys',
+  accessible: Accessible.AfterFirstUnlockThisDeviceOnly,
+});
+
+// Shared with the app's widget (iOS): the full group, with the team id.
+export const shared = createKeychain({
+  service: 'shared',
+  accessGroup: 'ABCDE12345.com.example.shared',
+});
+```
+
+`vault.clear()` on sign-out removes the refresh token and leaves the database key.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'KeychainOptions', text: 'Every option, with what it means on both platforms.', to: '/api/options/KeychainOptions' },
+    { name: 'Keychain', text: 'The methods of the storage it returns.', to: '/api/storage/methods' },
+    { name: 'Protection', text: 'How to choose `accessible` and `accessControl`.', to: '/docs/fundamentals/protection' },
+  ]}
+/>

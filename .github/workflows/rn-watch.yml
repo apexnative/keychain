@@ -1,0 +1,38 @@
+name: React Native watch
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'A React Native version to report; empty: the newest on npm newer than the one in package.json'
+        required: false
+
+# Opens an issue for each React Native minor newer than the one the repository builds with, as soon as it is on npm,
+# and adds its later versions to it (scripts/rn-watch.mjs).
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Report a newer React Native
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED: ${{ inputs.version }}
+        run: node scripts/rn-watch.mjs $REQUESTED

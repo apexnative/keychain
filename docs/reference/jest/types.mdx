@@ -1,0 +1,185 @@
+---
+title: Types of /jest
+sidebar_label: Types
+description: 'The types of the mock’s controls: the simulated device, a prompt it showed, an item of an old library to plant, and what is left of one after a migration.'
+hide_title: true
+---
+
+import { ApiHeader, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader
+  kind="Types"
+  importName="type KeychainMock, type MockDevice, type MockPrompt"
+  from="@apexnative/keychain/jest"
+/>
+
+`@apexnative/keychain/jest` also exports every type of the package, the same as `@apexnative/keychain` does; they are on the pages of their sections. These are the types of the mock's own controls, [`keychainMock`](/api/jest/keychainMock).
+
+## KeychainMock {#keychainmock}
+
+The type of `keychainMock`.
+
+```ts
+type KeychainMock = {
+  reset(): void;
+  setDevice(device: Partial<MockDevice>): void;
+  failNextAuthentication(code: KeychainErrorCode): void;
+  changeBiometry(): void;
+  prompts(): MockPrompt[];
+  addMigrationSource(item: MockMigrationItem): void;
+  migrationSources(): MockMigrationSource[];
+};
+```
+
+<Params
+  label="Method"
+  items={[
+    { name: 'reset', type: '() => void', text: 'Forgets every item, prompt, queued failure and planted old item, and restores the default device. [More](/api/jest/keychainMock#reset)' },
+    { name: 'setDevice', type: '(device) => void', text: 'Changes the fields of the device it is given; the others stay. [More](/api/jest/keychainMock#setDevice)' },
+    { name: 'failNextAuthentication', type: '(code) => void', text: 'The next prompt fails with the code. Calls queue up; `KEY_INVALIDATED` also deletes the item. [More](/api/jest/keychainMock#failNextAuthentication)' },
+    { name: 'changeBiometry', type: '() => void', text: 'A new finger or face: `biometryCurrentSet*` items throw `KEY_INVALIDATED` at their next read. [More](/api/jest/keychainMock#changeBiometry)' },
+    { name: 'prompts', type: '() => MockPrompt[]', text: 'The prompts shown since the last reset, oldest first. [More](/api/jest/keychainMock#prompts)' },
+    { name: 'addMigrationSource', type: '(item) => void', text: 'Plants an item of react-native-keychain or expo-secure-store for `migrate`. [More](/api/jest/keychainMock#addMigrationSource)' },
+    { name: 'migrationSources', type: '() => MockMigrationSource[]', text: 'The planted items that are still there. [More](/api/jest/keychainMock#migrationSources)' },
+  ]}
+/>
+
+## MockDevice {#mockdevice}
+
+The device the mock simulates. [`setDevice`](/api/jest/keychainMock#setDevice) takes any part of it.
+
+```ts
+type MockDevice = {
+  defaultService: string;
+  biometryTypes: BiometryType[];
+  biometryEnrolled: boolean;
+  passcodeSet: boolean;
+  faceIDUsageDescription: boolean;
+  androidApi: number | null;
+  hardwareSecurityLevel: HardwareSecurityLevel | null;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'defaultService', type: 'string', default: "'dev.apexnative.keychain.mock'", text: 'The service of the default store, `keychain`: the bundle identifier or the application id of a real app. A react-native-keychain generic password planted under it is the one `migrateFromReactNativeKeychain` moves by default.' },
+    { name: 'biometryTypes', type: 'BiometryType[]', default: "['faceID']", text: 'The biometric hardware: what `getBiometryTypes` returns. `[]` is a device without a sensor, where the biometric access controls are `noHardware`.' },
+    { name: 'biometryEnrolled', type: 'boolean', default: 'true', text: 'Whether biometry is enrolled. Without it `getBiometryState()` is `null`, and `biometryAny`, `biometryCurrentSet` and `biometryCurrentSetOrPasscode` are `notEnrolled`.' },
+    { name: 'passcodeSet', type: 'boolean', default: 'true', text: 'Whether the device has a passcode: what `isPasscodeSet` returns. Without it every access control is `passcodeNotSet`, and `whenPasscodeSetThisDeviceOnly` can\'t be written.' },
+    { name: 'faceIDUsageDescription', type: 'boolean', default: 'true', text: 'iOS: whether the app has `NSFaceIDUsageDescription` in its Info.plist. Without it, on a device with `faceID`, a biometric write and `canUseAccessControl` for a biometric access control reject with `MISSING_USAGE_DESCRIPTION`.' },
+    { name: 'androidApi', type: 'number | null', default: 'null', text: 'Android: the API level. `null` is a device that isn\'t an Android one. Below 30 the passcode variants are `unsupportedOS`, and a write with one, or with `authValidity` above 0, rejects with `UNSUPPORTED`.' },
+    { name: 'hardwareSecurityLevel', type: 'HardwareSecurityLevel | null', default: 'null', text: 'Android: the best hardware a new key can live in, what `getHardwareSecurityLevel` returns. `null` is iOS, where `keyStorage` means nothing. With a level, `getItemInfo` reports `android.securityLevel`: `tee` stays in the TEE even with StrongBox, `strongbox` falls back to the TEE, and `strongboxRequired` rejects with `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.' },
+  ]}
+/>
+
+## MockPrompt {#mockprompt}
+
+A prompt the mock showed, as [`prompts()`](/api/jest/keychainMock#prompts) returns it.
+
+```ts
+type MockPrompt = {
+  key: string;
+  title?: string;
+  subtitle?: string;
+  description?: string;
+  cancel?: string;
+  fallback?: string;
+  confirmationRequired: boolean;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'key', type: 'string', text: 'The key of the item the prompt was for. For an old item that `migrateItem` read: the user name of react-native-keychain, the key of expo-secure-store.' },
+    { name: 'title, subtitle, description, cancel, fallback', type: 'string', text: 'The texts of the prompt: the store\'s [`prompt`](/api/options/KeychainOptions#prompt) and the call\'s, merged field by field. A text neither of them set is missing.' },
+    { name: 'confirmationRequired', type: 'boolean', text: 'Always there: the call\'s, the store\'s, or `true`.' },
+  ]}
+/>
+
+## MockMigrationItem {#mockmigrationitem}
+
+An item of an old library, as that library left it on the device: what [`addMigrationSource`](/api/jest/keychainMock#addMigrationSource) plants. One of three shapes, with three optional fields shared by all of them.
+
+```ts
+type MockMigrationItem = {
+  requiresAuth?: boolean;
+  corrupted?: boolean;
+  accessGroup?: string;
+} & (
+  | {
+      // A generic password of react-native-keychain.
+      library: 'reactNativeKeychain';
+      service: string;
+      username: string;
+      password: string;
+    }
+  | {
+      // Internet credentials of react-native-keychain.
+      library: 'reactNativeKeychain';
+      server: string;
+      username: string;
+      password: string;
+    }
+  | {
+      // An item of expo-secure-store.
+      library: 'expoSecureStore';
+      key: string;
+      value: string;
+      keychainService?: string;
+    }
+);
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'library', type: "'reactNativeKeychain' | 'expoSecureStore'", required: true, text: 'The library that wrote it.' },
+    { name: 'service', type: 'string', text: 'react-native-keychain, a generic password: its service. It becomes the credentials of the store of that service.' },
+    { name: 'server', type: 'string', text: 'react-native-keychain, internet credentials: the server. They become the credentials with that `server`.' },
+    { name: 'username, password', type: 'string', text: 'react-native-keychain: the credentials.' },
+    { name: 'key, value', type: 'string', text: 'expo-secure-store: the key and the value. The item keeps its key.' },
+    { name: 'keychainService', type: 'string', default: "'app'", text: 'expo-secure-store: the `keychainService` the item was stored with.' },
+    { name: 'requiresAuth', type: 'boolean', default: 'false', text: 'The old item is protected: `migrateFrom…` skips it as `requiresAuth`, and `migrateItem` reads it with a prompt.' },
+    { name: 'corrupted', type: 'boolean', default: 'false', text: 'Reading it fails with `DATA_CORRUPTED`, as bytes that aren\'t text do.' },
+    { name: 'accessGroup', type: 'string', text: 'iOS: the access group the old item is in. A migration that names an `accessGroup` finds only the items of that group.' },
+  ]}
+/>
+
+## MockMigrationSource {#mockmigrationsource}
+
+A planted item that is still there, as [`migrationSources()`](/api/jest/keychainMock#migrationSources) returns it.
+
+```ts
+type MockMigrationSource = {
+  library: 'reactNativeKeychain' | 'expoSecureStore';
+  kind: 'genericPassword' | 'internetPassword' | 'secureStore';
+  service: string;
+  account: string;
+  requiresAuth: boolean;
+  migrated: boolean;
+};
+```
+
+<Params
+  label="Field"
+  items={[
+    { name: 'library', type: "'reactNativeKeychain' | 'expoSecureStore'", text: 'The library that wrote it.' },
+    { name: 'kind', type: "'genericPassword' | 'internetPassword' | 'secureStore'", text: 'What it becomes in the package: the [kinds](/api/migrate/types#migrationreport) of a migration report.' },
+    { name: 'service', type: 'string', text: 'The service or the server; for expo-secure-store, the `keychainService`.' },
+    { name: 'account', type: 'string', text: 'The user name; for expo-secure-store, the key.' },
+    { name: 'requiresAuth', type: 'boolean', text: 'Whether reading it needs a prompt.' },
+    { name: 'migrated', type: 'boolean', text: 'A run moved it and kept it: a run without `removeSource`. A later run with `removeSource` deletes it, if the new item is still there.' },
+  ]}
+/>
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'keychainMock', text: 'The controls these types describe.', to: '/api/jest/keychainMock' },
+    { name: '/jest', text: 'The mock module and what it simulates.', to: '/api/jest/overview' },
+    { name: 'Testing', text: 'The guide.', to: '/docs/guides/testing' },
+  ]}
+/>

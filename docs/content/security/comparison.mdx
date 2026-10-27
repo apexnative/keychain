@@ -1,0 +1,59 @@
+---
+title: Compared with others
+description: 'react-native-keychain 10, expo-secure-store and this package, row by row: the data model, the protection options, what happens when a device cannot protect a value, prompts, errors and backups.'
+---
+
+The comparison is based on the source code of `react-native-keychain` 10.0.0 and of `expo-secure-store` on the main branch of `expo/expo` in October 2026, and on their issue trackers. Both packages are widely used and have served many apps well; the rows below are about the differences that matter for security.
+
+| | react-native-keychain 10 | expo-secure-store | @apexnative/keychain |
+| --- | --- | --- | --- |
+| Data model | A username and a password per service | A string per key | A string or bytes per key, plus credentials |
+| Binary data | — | — | ✓ |
+| Listing / clearing | A list of services / reset of one service | — / — | `getAllKeys` / `clear` |
+| Sync API | — | ✓, can show a prompt and block JS | ✓, never shows a prompt |
+| Protection options | Seven flags on iOS; on Android `biometryAny` is the same as `currentSet` and the passcode is always allowed | One boolean | Six options, the same on both platforms |
+| Reuse of one prompt | Android: fixed at 5 seconds | — | `authValidity`, configurable |
+| No biometrics at write time | iOS checks only the passcode; Android stores the value without protection | An error | An error on both platforms |
+| A prompt on write | Depends on the cipher | Android yes, iOS no | Never, on both platforms |
+| Concurrent prompts | One global lock holds up everything | An error | A queue; reads without protection don't wait |
+| Changed biometrics | An error | `null` | `KEY_INVALIDATED`; the item is removed |
+| Error codes | ✓ `E_*` | — | ✓ |
+| iCloud Keychain | ✓ (queries match only one value of the flag) | — | ✓ |
+| Android backup | The DataStore is backed up, its keys aren't: "Could not decrypt" after a restore | Backup rules from the config plugin | A file in `noBackupFilesDir`: nothing to configure |
+| Reinstall on iOS | Items stay | Items stay | Optional `clearOnReinstall` |
+| Architecture | A Turbo spec of `Object` types, plus the old architecture | Expo Modules | A typed TurboModule, New Architecture only |
+
+## react-native-keychain {#react-native-keychain}
+
+What the package takes from it: the error codes, the matrix of access control, `accessGroup`, iCloud, and the queries about the device.
+
+What it does differently, and why:
+
+- **Writes.** rnk deletes every item of the service and then adds the new one; a failed add loses the old value. Writes here are atomic ([On iOS](./ios#writes)).
+- **Prompts on iOS.** rnk uses `kSecUseOperationPrompt` and `kSecUseAuthenticationUI*`, deprecated since iOS 14, and no `LAContext`: the prompt has one line of text, and one prompt can't serve several reads. Here prompts go through `LAContext`.
+- **iCloud queries.** rnk passes the exact value of `kSecAttrSynchronizable` in queries, so an item written with the other value is neither found nor removed. Here reads match either.
+- **Silent downgrade on Android.** When biometrics is requested but not enrolled, rnk picks a cipher without authentication and stores the value unprotected. Here the write fails.
+- **One window for everything.** rnk's Android keys allow biometrics or the passcode with a 5-second window, so `BIOMETRY_CURRENT_SET` and `BIOMETRY_ANY` are the same there. Here each option makes its own key.
+- **Ciphers.** rnk keeps AES-CBC, AES-GCM, AES-GCM without authentication and RSA with PKCS#1 v1.5 padding, and migrates between them on read. Here there is one scheme per protection, with OAEP ([On Android](./android)).
+- **Startup.** rnk sets up four cipher storages and its DataStore when the module is created; its issue tracker has reports of the UI freezing at launch. Here nothing runs until first use.
+- **Backups.** rnk's DataStore is in Auto Backup and its Keystore keys can't be, so a restore on a new phone brings ciphertexts without keys: its most discussed issues are "Could not decrypt data with alias" and `E_CRYPTO_FAILED`.
+- **Biometry type.** rnk reports one type and can't know which one `BiometricPrompt` will show. Here `getBiometryTypes` returns every modality of the device, so the app can name the feature by them.
+
+## expo-secure-store {#expo-secure-store}
+
+What the package takes from it: the key/value model, the sync API (without prompts), the config plugin, the check of `NSFaceIDUsageDescription`, and attention to backups.
+
+What it does differently, and why:
+
+- **Errors.** Expo's errors are native messages without codes; its docs suggest comparing the message with "User canceled the authentication". Here every error has a code.
+- **Invalidation.** Expo returns `null` for an item whose key was invalidated, and deletes an item that fails to decrypt: the app can't tell "never stored" from "lost". Here it is `KEY_INVALIDATED`.
+- **The sync API** can show biometrics and hold the JS thread until the user answers. Here a sync call never prompts.
+- **Protection.** One switch, `requireAuthentication`: no passcode fallback, no `biometryAny`, no reuse window. Here, six options and `authValidity`.
+- **Platforms differ.** On Android, a write with `requireAuthentication` shows the prompt, because its AES key needs authentication to encrypt; on iOS it doesn't. Here no write prompts.
+- **One prompt at a time.** A second concurrent read fails with "Authentication is already in progress". Here it waits in the queue.
+- **Keys and values.** Keys are limited to `[A-Za-z0-9._-]`, values to strings; there is no listing and no `clear()`.
+- **Reads on iOS** look in three places (no-auth, auth, legacy): up to three Keychain queries for one read.
+- **The default `WHEN_UNLOCKED`** fails in the background with "User interaction is not allowed". The default here is `afterFirstUnlock`.
+- **`kSecUseDataProtectionKeychain`** isn't set, which matters on Mac Catalyst. Here it always is.
+
+Like `expo-secure-store`, this package accepts only Class 3 biometrics on Android for protected items: it is the only kind the Keystore lets unlock a key. On phones whose face unlock is Class 2, only the fingerprint sensor is offered.

@@ -1,0 +1,202 @@
+---
+title: From react-native-keychain
+description: 'Move the data with one call at launch, keep the old function names with the compat layer while you switch, and know which behavior changes: atomic writes, no silent downgrade, distinct biometric options on Android.'
+---
+
+There are two parts to a move from `react-native-keychain` (rnk): the items already on the users' devices, and the code that reads and writes them. The package handles both. `@apexnative/keychain/migrate` moves the items; `@apexnative/keychain/compat` has rnk's functions on top of the new storage, so the code can change one call at a time, or not at all at first.
+
+## Move the data {#data}
+
+The package doesn't read rnk's items in place, even under the same service: it sees [only its own items](../fundamentals/storage-model#own-items). Until they are moved, `createKeychain({ service: 'auth' }).getCredentials()` returns `null` for what rnk stored under `auth`. Moving them is the job of [`migrateFromReactNativeKeychain`](/api/migrate/migrateFromReactNativeKeychain). Run it once at launch, before the first read:
+
+```ts title="src/storage/migrate.ts"
+import { migrateFromReactNativeKeychain } from '@apexnative/keychain/migrate';
+
+export async function migrateSecrets() {
+  // The generic password of rnk's default service: setGenericPassword(username, password).
+  await migrateFromReactNativeKeychain({ removeSource: true });
+
+  // The services and the servers the app named.
+  const report = await migrateFromReactNativeKeychain({
+    services: ['auth'], // setGenericPassword(…, { service: 'auth' })
+    servers: ['api.example.com'], // setInternetCredentials('api.example.com', …)
+    removeSource: true,
+  });
+  // {
+  //   migrated: ['auth'],
+  //   skipped: [{ key: 'api.example.com', kind: 'internetPassword', reason: 'requiresAuth' }],
+  //   warnings: [],
+  // }
+  return report;
+}
+```
+
+```tsx title="App.tsx"
+import { useEffect, useState } from 'react';
+import { migrateSecrets } from './src/storage/migrate';
+
+export function App() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    migrateSecrets().finally(() => setReady(true));
+  }, []);
+  return ready ? <Root /> : <Splash />;
+}
+```
+
+- **Name the services.** Without `services`, the call moves rnk's default service: the bundle identifier on iOS, rnk's own default on Android. With `services`, it moves those and not the default, hence the two calls. On iOS rnk's items look like the items of any other SDK, so the migration takes only the services you name. Name the `servers` of `setInternetCredentials` too: there is no default.
+- **Items without authentication** move silently. The function never shows a prompt.
+- **Items with authentication** come back in `skipped` with `requiresAuth`; [move them with a prompt](#protected) when the user is there.
+- **Running it again is safe.** An item is moved once: a later run finds it gone, or marked as moved, and skips it.
+
+### Where each item goes {#where}
+
+| rnk item | Becomes | In the report |
+| --- | --- | --- |
+| `setGenericPassword(username, password, { service: 'auth' })` | The credentials of `createKeychain({ service: 'auth' })` | `'auth'` |
+| `setGenericPassword(username, password)`: the default service | The credentials of the default storage, `keychain` | The service |
+| `setInternetCredentials('api.example.com', username, password)` | The credentials of `into` (default: `keychain`) with `server: 'api.example.com'` | `'api.example.com'` |
+
+The username becomes the item's label, readable without a prompt, and the password its value:
+
+```ts
+import { createKeychain, keychain } from '@apexnative/keychain';
+
+const auth = createKeychain({ service: 'auth' });
+await auth.getCredentials(); // { username, password }, what rnk's getGenericPassword({ service: 'auth' }) gave
+await auth.getItemInfo('credentials'); // { label: username, … }, without a prompt
+await keychain.getCredentials({ server: 'api.example.com' });
+```
+
+A key that is taken in the new storage is never overwritten: the item is skipped as `exists`. The new items get the defaults of their storage: `afterFirstUnlock`, no access control.
+
+### Removing the old items {#remove-source}
+
+With `removeSource: true`, each old item is deleted as soon as its new item is written. With `false`, the default, the old item stays, marked as moved; a later run with `removeSource: true` deletes it, if the new item is still there. Keep the old items for one release if the app may still roll back to rnk; delete them in the next.
+
+An old item is deleted or marked only after the new one is written, so no item is lost between the two. When that last step fails, the new item is there and `warnings` names the old one.
+
+:::warning[One library at a time]
+
+Run a migration with `removeSource` before react-native-keychain touches its data in this launch of the app, or once rnk is removed from the app. Otherwise both libraries work on the same items at once: rnk may read, rewrite or cache an item the migration is deleting.
+
+:::
+
+### Protected items {#protected}
+
+An item rnk stored with an `accessControl` needs the user to be read, and `migrateFromReactNativeKeychain` never shows a prompt. Move it with [`migrateItem`](/api/migrate/migrateItem) at a moment the user expects Face ID, such as the next biometric sign-in:
+
+```ts title="src/auth/unlock.ts"
+import { AccessControl, Accessible } from '@apexnative/keychain';
+import { migrateItem } from '@apexnative/keychain/migrate';
+
+const report = await migrateItem(
+  { library: 'reactNativeKeychain', service: 'auth' },
+  {
+    prompt: { title: 'Sign in to Example' },
+    setOptions: {
+      accessible: Accessible.WhenUnlockedThisDeviceOnly,
+      accessControl: AccessControl.BiometryCurrentSet,
+    },
+    removeSource: true,
+  }
+);
+```
+
+The prompt is the old item's: the user sees one Face ID, and the value moves into this package with the protection of `setOptions`. A canceled prompt is no exception: the item is in `skipped` with `reason: 'error'` and `USER_CANCELED`, and stays where it was for the next try. For internet credentials, name the server: `{ library: 'reactNativeKeychain', server: 'api.example.com' }`.
+
+### Where the migration reads {#reads}
+
+| Platform | rnk's items |
+| --- | --- |
+| iOS | The app's Keychain: generic passwords by `kSecAttrService`, internet passwords by `kSecAttrServer`, in every access group the app can read, or the one `accessGroup` names |
+| Android | rnk's DataStore `RN_KEYCHAIN`, or the SharedPreferences of that name from rnk before 9, decrypted with rnk's own keys and formats: AES-GCM with and without authentication, AES-CBC, RSA. The format of rnk 6 and older (Facebook Conceal) isn't read |
+
+## Keep the names while you switch {#compat}
+
+[`@apexnative/keychain/compat`](/api/compat/overview) has rnk's functions and constants, with their arguments, on top of the new core. Change the import, and the calls stay:
+
+```ts
+// Before
+import * as Keychain from 'react-native-keychain';
+// After: the same calls, the new storage
+import * as Keychain from '@apexnative/keychain/compat';
+
+await Keychain.setGenericPassword(username, password, { service: 'auth' });
+const credentials = await Keychain.getGenericPassword({ service: 'auth' });
+```
+
+The layer works with the same items as the migration, so the two fit together:
+
+- **A generic password of service `S` is the credentials of the storage `S`.** `getGenericPassword({ service: 'auth' })` reads what `migrateFromReactNativeKeychain({ services: ['auth'] })` moved, and what `createKeychain({ service: 'auth' }).getCredentials()` reads. The app's default service is the default storage.
+- **Internet credentials are the credentials of the default storage under their server**: `getInternetCredentials('api.example.com')` reads `keychain.getCredentials({ server: 'api.example.com' })`.
+- **`getAllGenericPasswordServices`** can't list the storages there are. It reads a list the layer and the migration keep: the item `generic-services` of the storage `apexnative.keychain.compat`, with every other service a generic password was written to through them.
+- **Errors are `KeychainError`s** with the [codes](../fundamentals/errors) of the package. A `switch` over `error.code` replaces matching rnk's messages.
+- **Not here:** shared web credentials (`requestSharedWebCredentials`, `setSharedWebCredentials`), the `storage` option, `ACCESSIBLE.ALWAYS` and `ACCESS_CONTROL.APPLICATION_PASSWORD` reject with `UNSUPPORTED` instead of being ignored.
+
+Migrate the data first: the layer reads the new storage, not rnk's, and finds nothing of what rnk stored until it is moved.
+
+## The API side by side {#api}
+
+To leave the compat layer, one call at a time:
+
+| react-native-keychain | @apexnative/keychain |
+| --- | --- |
+| `setGenericPassword(username, password, { service })` | `createKeychain({ service }).setCredentials({ username, password })` |
+| `getGenericPassword({ service })` | `createKeychain({ service }).getCredentials()`: `null`, not `false`, when there is none |
+| `hasGenericPassword({ service })` | `hasItem('credentials')` |
+| `resetGenericPassword({ service })` | `removeCredentials()`, or `clear()` for the whole service |
+| `getAllGenericPasswordServices()` | No equivalent: `getAllKeys()` lists the keys of one service |
+| `setInternetCredentials(server, username, password)` | `keychain.setCredentials({ username, password }, { server })` |
+| `getInternetCredentials(server)` | `keychain.getCredentials({ server })` |
+| `hasInternetCredentials(server)` | `keychain.hasItem('credentials:' + server)` |
+| `resetInternetCredentials(server)` | `keychain.removeCredentials({ server })` |
+| `getSupportedBiometryType()` | `getBiometryTypes()`: an array, enrolled or not |
+| `canImplyAuthentication(options)` | `canUseAccessControl(accessControl)`, with the reason when it can't |
+| `getSecurityLevel()` | `getHardwareSecurityLevel()` |
+| `isPasscodeAuthAvailable()` | `isPasscodeSet()`, or `canUseAccessControl(AccessControl.Passcode)` |
+| `authenticationPrompt` | `prompt` |
+| `cloudSync` | `synchronizable` |
+| `accessGroup` | `accessGroup` |
+| `storage` (`STORAGE_TYPE`) | Nothing to choose: one scheme per protection ([On Android](../security/android)) |
+| `securityLevel` (`SECURITY_LEVEL`) | `android.keyStorage` |
+| `requestSharedWebCredentials`, `setSharedWebCredentials` | Not supported: Password AutoFill is AuthenticationServices' job |
+| rnk's errors | `KeychainError` with a [code](../fundamentals/errors) |
+
+Beyond credentials, the new storage has plain items by key (`setItem`, `setBytes`). A token that rnk forced into the password of a service can become an item with a name of its own.
+
+### ACCESS_CONTROL {#access-control}
+
+| `ACCESS_CONTROL` | `accessControl` |
+| --- | --- |
+| `USER_PRESENCE` | `AccessControl.BiometryAnyOrPasscode` |
+| `BIOMETRY_ANY` | `AccessControl.BiometryAny` |
+| `BIOMETRY_CURRENT_SET` | `AccessControl.BiometryCurrentSet` |
+| `DEVICE_PASSCODE` | `AccessControl.Passcode` |
+| `BIOMETRY_ANY_OR_DEVICE_PASSCODE` | `AccessControl.BiometryAnyOrPasscode` |
+| `BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE` | `AccessControl.BiometryCurrentSetOrPasscode` |
+| `APPLICATION_PASSWORD` | Not supported |
+
+### ACCESSIBLE {#accessible}
+
+| `ACCESSIBLE` | `accessible` |
+| --- | --- |
+| `AFTER_FIRST_UNLOCK` | `Accessible.AfterFirstUnlock` (the default) |
+| `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY` | `Accessible.AfterFirstUnlockThisDeviceOnly` |
+| `WHEN_UNLOCKED` | `Accessible.WhenUnlocked` |
+| `WHEN_UNLOCKED_THIS_DEVICE_ONLY` | `Accessible.WhenUnlockedThisDeviceOnly` |
+| `WHEN_PASSCODE_SET_THIS_DEVICE_ONLY` | `Accessible.WhenPasscodeSetThisDeviceOnly` |
+| `ALWAYS` | Not supported: deprecated by Apple |
+
+## What behaves differently {#behavior}
+
+The same call can behave differently, on purpose. Check these in your app:
+
+- **A write keeps the old value when it fails.** rnk deletes the item first and then adds the new one, so a failed add loses the old value. Here the write is atomic.
+- **No biometrics, no write.** On Android, rnk stores the value without protection when biometrics is requested but not enrolled. Here the write throws `BIOMETRY_NOT_ENROLLED` on both platforms.
+- **`biometryAny` and `biometryCurrentSet` differ on Android.** In rnk both make the same key, which also accepts the passcode, with a fixed 5-second window. Here each option makes its own key, the passcode only where the option says so, and the window is `authValidity`, 0 by default.
+- **The passcode options need Android 11.** On API 24–29 they throw `UNSUPPORTED` instead of quietly working differently.
+- **Changed biometrics is `KEY_INVALIDATED`**, and the item is removed.
+- **No "Could not decrypt" after a restore.** Android data is kept out of backups, so a restored phone starts without the items instead of with items it can't decrypt.
+- **Prompts wait in a queue**, one at a time, instead of a global lock that holds up every operation; reads without authentication never wait.
+- **Nothing runs at startup.** rnk initializes its storages when the module is created; here a service is read on first use.

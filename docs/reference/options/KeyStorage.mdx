@@ -1,0 +1,58 @@
+---
+title: KeyStorage
+description: 'Where Android keeps the Keystore key of an item: the Trusted Execution Environment, StrongBox when there is one, or StrongBox or nothing. A constant object and a type of the same name; iOS ignores it.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Constants" importName="KeyStorage" />
+
+`KeyStorage` is the value of `android.keyStorage`, an option of a storage and of a write. `KeyStorage.Strongbox` is the string `'strongbox'`; both forms are accepted.
+
+## Usage {#usage}
+
+```ts
+import { createKeychain, KeyStorage } from '@apexnative/keychain';
+
+const keys = createKeychain({
+  service: 'storage.keys',
+  android: { keyStorage: KeyStorage.Strongbox },
+});
+```
+
+## Signature {#signature}
+
+```ts
+const KeyStorage: {
+  readonly Tee: 'tee';
+  readonly Strongbox: 'strongbox';
+  readonly StrongboxRequired: 'strongboxRequired';
+};
+
+type KeyStorage = (typeof KeyStorage)[keyof typeof KeyStorage];
+```
+
+<Facts type="'tee' | 'strongbox' | 'strongboxRequired'" defaultValue="'tee'" platforms={['android']} />
+
+## Values {#values}
+
+| Constant | String | The key lives in |
+| --- | --- | --- |
+| `Tee` | `'tee'` | The Trusted Execution Environment, the default. It stays there on a device that also has StrongBox |
+| `Strongbox` | `'strongbox'` | StrongBox, a separate secure chip, when the device has one; the TEE otherwise |
+| `StrongboxRequired` | `'strongboxRequired'` | StrongBox; a write on a device without it throws `HARDWARE_UNAVAILABLE` |
+
+The default is the TEE because StrongBox is markedly slower, and tokens are often read at startup. Where an item's key ended up is in [`getItemInfo`](/api/storage/methods#getItemInfo) as `android.securityLevel`; what the device offers, in [`getHardwareSecurityLevel`](/api/device/getHardwareSecurityLevel). An emulator or a device without secure hardware keeps keys in software whatever the option says, and reports `'software'`.
+
+iOS protects Keychain items with keys of the Secure Enclave and has no choice to make: it ignores the option.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'getHardwareSecurityLevel', text: 'What the device offers.', to: '/api/device/getHardwareSecurityLevel' },
+    { name: 'HardwareSecurityLevel', text: 'Where a key lives, as reported.', to: '/api/device/HardwareSecurityLevel' },
+    { name: 'On Android', text: 'How the package uses the Keystore.', to: '/docs/security/android' },
+  ]}
+/>

@@ -1,0 +1,9 @@
+# The native projects are made by `expo prebuild` (continuous native generation), not kept.
+/ios
+/android
+.expo/
+dist/
+node_modules/
+# The packed library (install-library.sh), and the lockfile that would pin its checksum.
+/.library
+package-lock.json

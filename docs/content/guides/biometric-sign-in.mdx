@@ -1,0 +1,168 @@
+---
+title: Sign-in with Face ID
+description: 'The user signs in once with a password or SSO; after that, Face ID or a fingerprint unlocks the refresh token. Where each token lives, the fallback paths, and the rotation of the refresh token.'
+---
+
+import { Steps } from '@site/src/components/Intro';
+
+A common sign-in: the user signs in once with a password or through SSO, then turns on "Sign in with Face ID". From then on, the app opens with a glance: the biometrics unlocks the refresh token, the refresh token gets a fresh session. This guide builds that, with every way it can go wrong.
+
+<Steps
+  items={[
+    { text: 'Put the access token and the refresh token where they belong.' },
+    { text: 'Offer Face ID only when the device can lock an item with it.', code: 'canUseAccessControl' },
+    { text: 'After the sign-in, lock the refresh token behind biometrics.', code: 'AccessControl.BiometryCurrentSet' },
+    { text: 'At launch, unlock it, refresh the session, rotate it.', code: 'vault.getItem' },
+    { text: 'Handle a cancel, a lockout and changed biometrics.', code: 'KeychainError' },
+  ]}
+/>
+
+## Where the tokens live {#where}
+
+| Token | Lives | Why |
+| --- | --- | --- |
+| Access token | `keychain`, `accessible: 'afterFirstUnlock'`, no `accessControl` | Short-lived; read by every request and by background work, so no prompt |
+| Refresh token | A vault, `whenUnlockedThisDeviceOnly` and `biometryCurrentSet` | Long-lived; it can make new sessions, so it needs the user |
+
+```ts title="src/auth/storage.ts"
+import { AccessControl, Accessible, createKeychain, keychain } from '@apexnative/keychain';
+
+export const session = keychain;
+
+export const vault = createKeychain({
+  service: 'auth.vault',
+  accessible: Accessible.WhenUnlockedThisDeviceOnly,
+  accessControl: AccessControl.BiometryCurrentSet,
+  prompt: { title: 'Sign in to Example', cancel: 'Use password' },
+});
+```
+
+**`biometryCurrentSet` or `biometryCurrentSetOrPasscode`.** With `biometryCurrentSet`, only the faces and fingers enrolled today open the vault, and a new enrollment loses it: someone who learns the passcode can't add their own face and get in. With `…OrPasscode`, the passcode opens it too, which helps people whose biometrics often fails, at the cost of the passcode being enough. Choose by what the refresh token can do in your app. `biometryAny*` keeps the item across new enrollments; it is weaker for the same reason.
+
+## Offer Face ID {#offer}
+
+Ask the device before you show the switch. The check shows nothing to the user:
+
+```ts title="src/auth/biometrics.ts"
+import {
+  AccessControl,
+  BiometryType,
+  canUseAccessControl,
+  getBiometryTypes,
+} from '@apexnative/keychain';
+
+export async function biometricOffer() {
+  const check = await canUseAccessControl(AccessControl.BiometryCurrentSet);
+  if (!check.available) return null; // no switch; check.reason says why
+  const types = await getBiometryTypes();
+  return types.length === 1 && types[0] === BiometryType.FaceID
+    ? 'Face ID'
+    : types.length === 1 && types[0] === BiometryType.TouchID
+      ? 'Touch ID'
+      : 'biometrics';
+}
+```
+
+When `reason` is `notEnrolled`, a hint can send the user to the system settings to enroll; `passcodeNotSet` means the phone has no screen lock at all.
+
+## Lock the refresh token {#enable}
+
+After a sign-in with a password or SSO, the server returns both tokens. Store them; the write to the vault shows no prompt:
+
+```ts title="src/auth/signIn.ts"
+import { KeychainError } from '@apexnative/keychain';
+import { session, vault } from './storage';
+
+export async function completeSignIn(tokens: Tokens, withBiometrics: boolean) {
+  await session.setItem('accessToken', tokens.accessToken);
+  if (!withBiometrics) return;
+  try {
+    await vault.setItem('refreshToken', tokens.refreshToken, { label: tokens.username });
+  } catch (error) {
+    // BIOMETRY_NOT_ENROLLED / PASSCODE_NOT_SET: the device changed since the check.
+    if (error instanceof KeychainError) return turnOffBiometricSignIn();
+    throw error;
+  }
+}
+```
+
+The `label` keeps the username next to the item, outside the secret: the sign-in screen can say "Continue as ivan@example.com" with `vault.getItemInfo('refreshToken')`, before any prompt.
+
+With SSO the flow is the same: the identity provider's sign-in gives the app its tokens, and the app stores them exactly like this. The biometrics never goes to the server; it only unlocks what the app already holds.
+
+## At launch {#launch}
+
+```ts title="src/auth/restore.ts"
+import { session, vault } from './storage';
+
+export async function restoreSession(): Promise<Session | null> {
+  const accessToken = await session.getItem('accessToken');
+  if (accessToken && !isExpired(accessToken)) return { accessToken };
+
+  if (!(await vault.hasItem('refreshToken'))) return null; // no prompt: the sign-in screen
+
+  const refreshToken = await vault.getItem('refreshToken'); // the prompt
+  if (!refreshToken) return null;
+  return refresh(refreshToken);
+}
+```
+
+`hasItem` never shows a prompt, so the app decides between the sign-in screen and the Face ID screen without bothering the user.
+
+## Rotation of the refresh token {#rotation}
+
+Many servers return a new refresh token with every refresh and revoke the old one. Write it back at once:
+
+```ts title="src/auth/refresh.ts"
+async function refresh(refreshToken: string): Promise<Session> {
+  const tokens = await api.refresh(refreshToken);
+  await session.setItem('accessToken', tokens.accessToken);
+  await vault.setItem('refreshToken', tokens.refreshToken); // no prompt
+  return { accessToken: tokens.accessToken };
+}
+```
+
+The write shows no prompt, so the rotation is invisible to the user. It is atomic: if it fails, the old refresh token stays, and the app can retry rather than lose the session.
+
+## The fallback paths {#fallback}
+
+The prompt can end without a value. Each ending has its own code and its own next step:
+
+```ts title="src/auth/restore.ts"
+import { KeychainError, KeychainErrorCode } from '@apexnative/keychain';
+
+export async function unlockRefreshToken(): Promise<string | 'password' | 'signIn'> {
+  try {
+    return (await vault.getItem('refreshToken')) ?? 'signIn';
+  } catch (error) {
+    if (!(error instanceof KeychainError)) throw error;
+    switch (error.code) {
+      case KeychainErrorCode.UserCanceled: // "Use password"
+      case KeychainErrorCode.UserFallback: // the fallback button on iOS
+      case KeychainErrorCode.Lockout:
+      case KeychainErrorCode.LockoutPermanent:
+        return 'password';
+      case KeychainErrorCode.KeyInvalidated: // new biometrics: the item was removed
+        await turnOffBiometricSignIn();
+        return 'signIn';
+      case KeychainErrorCode.SystemCanceled: // the app left the foreground: ask again on return
+        return 'signIn';
+      default:
+        throw error;
+    }
+  }
+}
+```
+
+- **Cancel and lockout** go to the password form. The refresh token stays in the vault; the next launch offers Face ID again.
+- **`KEY_INVALIDATED`** means the biometrics changed. The item is gone, and the app should say so ("Face ID changed on this device, sign in again") and offer to turn it on again after the sign-in.
+- **`SYSTEM_CANCELED`** happens when a call comes in or the app goes to the background. It isn't the user's choice: show the Face ID screen again when the app is back.
+
+## Sign-out {#sign-out}
+
+```ts
+await session.removeItem('accessToken');
+await vault.clear(); // the refresh token, and on Android the vault's Keystore keys
+```
+
+`clear()` shows no prompt, even for items behind biometrics.

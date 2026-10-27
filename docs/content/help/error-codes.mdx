@@ -1,0 +1,169 @@
+---
+title: Error codes
+description: 'Every code of KeychainError: when it happens, the native error behind it on iOS and Android, and what to do about it.'
+toc_max_heading_level: 3
+---
+
+Every failure is a `KeychainError` with one of the codes below; `nativeCode` and `nativeDomain` carry the native error for logs. A missing value is `null`, never an error. [Errors](../fundamentals/errors) shows how to handle them in code.
+
+## The prompt {#prompt}
+
+### USER_CANCELED {#user-canceled}
+
+The user closed the prompt: Cancel, or the `cancel` button of `prompt`. On Android 16, also a prompt that was open when the user went to the home screen: Android reports it as the user's cancel, and the package can't tell the two apart.
+
+- iOS: `LAError.userCancel`, `errSecUserCanceled`. Android: `ERROR_USER_CANCELED`, `ERROR_NEGATIVE_BUTTON`.
+- **Do:** offer the other way in (a password form); don't ask again at once.
+
+### USER_FALLBACK {#user-fallback}
+
+iOS only: the user tapped the fallback button of a prompt for biometrics alone, `biometryAny` or `biometryCurrentSet`. `prompt.fallback` sets its text; `''` hides it. For the `…OrPasscode` values the fallback is the passcode, and there is no `USER_FALLBACK`.
+
+- iOS: `LAError.userFallback`.
+- **Do:** show your own fallback, for example a password form.
+
+### SYSTEM_CANCELED {#system-canceled}
+
+The system closed the prompt: the app went to the background, a call came in, or, on Android, a waiting prompt was dropped when the app left the foreground.
+
+- iOS: `LAError.systemCancel`, `LAError.appCancel`. Android: `ERROR_CANCELED`, `ERROR_TIMEOUT`.
+- **Do:** nothing the user chose; ask again when the app is back in the foreground.
+
+### AUTH_FAILED {#auth-failed}
+
+iOS: the face or finger wasn't recognized. On Android a failed attempt doesn't end the prompt, so Android doesn't report it.
+
+- iOS: `LAError.authenticationFailed`, `errSecAuthFailed`.
+- **Do:** let the user try again, or offer the fallback.
+
+### LOCKOUT {#lockout}
+
+Too many failed attempts: biometrics is locked for now.
+
+- iOS: `LAError.biometryLockout`. Android: `ERROR_LOCKOUT`.
+- **Do:** tell the user; offer the passcode or a password. With an `…OrPasscode` option the system offers the passcode itself. On Android 15 and newer the user can lift the lockout with the PIN inside the prompt; the package then shows the prompt once more by itself.
+- A lockout doesn't make `canUseAccessControl` answer "unavailable": the item can still be written.
+
+### LOCKOUT_PERMANENT {#lockout-permanent}
+
+Android: biometrics is locked until the user unlocks the device with the passcode.
+
+- Android: `ERROR_LOCKOUT_PERMANENT`.
+- **Do:** tell the user to unlock the phone with the passcode; meanwhile, offer a password.
+
+## The device {#device}
+
+### BIOMETRY_NOT_ENROLLED {#biometry-not-enrolled}
+
+The item needs biometrics, and none is enrolled: `biometryAny`, `biometryCurrentSet`, and `biometryCurrentSetOrPasscode`, which the passcode doesn't make up for. A write fails with it instead of storing the value with less protection.
+
+- iOS: `LAError.biometryNotEnrolled`. Android: `BIOMETRIC_ERROR_NONE_ENROLLED`.
+- **Do:** check `canUseAccessControl` before offering the protection; suggest enrolling in the system settings.
+
+### BIOMETRY_NOT_AVAILABLE {#biometry-not-available}
+
+No biometric sensor, or it is unavailable right now.
+
+- iOS: `LAError.biometryNotAvailable`. Android: `ERROR_HW_NOT_PRESENT`, `ERROR_HW_UNAVAILABLE`.
+- **Do:** don't offer biometrics on this device; `canUseAccessControl` answers `noHardware`.
+
+### PASSCODE_NOT_SET {#passcode-not-set}
+
+The device has no screen lock, which the item's protection needs: every `accessControl` but `none`, and `accessible: 'whenPasscodeSetThisDeviceOnly'`.
+
+- iOS: `LAError.passcodeNotSet`. Android: `ERROR_NO_DEVICE_CREDENTIAL`, or the device isn't secure.
+- **Do:** explain that the feature needs a screen lock; store without `accessControl` only if the value allows it.
+
+### HARDWARE_UNAVAILABLE {#hardware-unavailable}
+
+Android: `android.keyStorage: 'strongboxRequired'` on a device without StrongBox. In `/compat`, also `SECURITY_LEVEL.SECURE_HARDWARE` on a device that keeps keys in software.
+
+- Android: `StrongBoxUnavailableException`.
+- **Do:** use `'strongbox'`, which falls back to the TEE, unless the item must not exist without StrongBox.
+
+### UNSUPPORTED {#unsupported}
+
+The option isn't available on this OS or platform, or the native module isn't there:
+
+- a passcode option, or `authValidity` above 0, on Android 7–10 (API below 30);
+- any call on the web;
+- any call in Expo Go, or in an app not rebuilt after the install: the message says how to fix it;
+- in `/compat`, what react-native-keychain had and this package doesn't: shared web credentials, `storage`, `ACCESSIBLE.ALWAYS`, `ACCESS_CONTROL.APPLICATION_PASSWORD`.
+
+**Do:** check `canUseAccessControl` (`unsupportedOS`); use a development build; in tests, use the Jest mock.
+
+## The item {#item}
+
+### KEY_INVALIDATED {#key-invalidated}
+
+The enrolled biometrics changed since the item was written with `biometryCurrentSet*`, or its Android key was invalidated (for example, the screen lock was removed). The item has been removed.
+
+- iOS: the biometric domain state differs from the one stored with the item. Android: `KeyPermanentlyInvalidatedException`.
+- **Do:** tell the user why, sign them in again, and store the item anew.
+
+### DATA_CORRUPTED {#data-corrupted}
+
+The stored data can't be decrypted or decoded, and it isn't an invalidation: the data was changed, moved to another key, or its file is damaged.
+
+- iOS: `errSecDecode`. Android: `AEADBadTagException`, `BadPaddingException`, a store file that isn't valid.
+- **Do:** remove the item and get the value again; report it with `nativeCode`.
+
+## Not now {#not-now}
+
+### INTERACTION_NOT_ALLOWED {#interaction-not-allowed}
+
+The item can't be read or written in the device's state: a `whenUnlocked*` item while the device is locked, or the app is in the background. On iOS with `clearOnReinstall`, also any call before the first unlock after a restart, when the package can't yet tell a new installation.
+
+- iOS: `errSecInteractionNotAllowed`, `LAError.notInteractive`. Android: `UserNotAuthenticatedException` for a key that needs an unlocked device; before Android 9, the package's own check of the lock.
+- **Do:** read it when the app is active, or store values that background work needs with `afterFirstUnlock`.
+
+### AUTH_REQUIRED {#auth-required}
+
+A sync method on an item that needs a prompt. The sync API never shows one.
+
+- **Do:** use the async method (`getItem`), which shows the prompt.
+
+### NO_ACTIVITY {#no-activity}
+
+Android: there is no activity to show the prompt in.
+
+- Android: no `FragmentActivity` in the foreground.
+- **Do:** read protected items while the app is on screen, not from a headless task.
+
+## The app's setup {#setup}
+
+### MISSING_ENTITLEMENT {#missing-entitlement}
+
+iOS: an `accessGroup` that the app's `keychain-access-groups` entitlement doesn't list.
+
+- iOS: `errSecMissingEntitlement`.
+- **Do:** add the group under Keychain Sharing, or in the config plugin; see [Sharing between apps](../guides/sharing-between-apps).
+
+### MISSING_USAGE_DESCRIPTION {#missing-usage-description}
+
+iOS: a write or a read of an item with biometrics, or `canUseAccessControl` for one, on a device with Face ID, and `Info.plist` has no `NSFaceIDUsageDescription`. It is a mistake in the app's setup, and it is loud on purpose: the call fails instead of the app crashing, and `canUseAccessControl` can't answer for it.
+
+- **Do:** add the description ([Installation](../start/installation#face-id)), or the [`faceIDPermission`](/api/plugin#faceIDPermission) of the config plugin, which writes a default text even without the option.
+
+### INVALID_ARGUMENT {#invalid-argument}
+
+A key, a value or an option breaks a rule:
+
+- a key or `service` that is empty, longer than 256 characters, or holds U+0000;
+- a string value, a `label`, a username or a password with U+0000 or a lone surrogate: React Native would cut the string at U+0000 on its way to the native side;
+- an empty username, or a `label` passed to `setCredentials`;
+- an option name that doesn't exist, or a value an option doesn't have;
+- `synchronizable` with `*ThisDeviceOnly` or an `accessControl`; `biometryCurrentSet*` with `authValidity > 0`;
+- `getCredentials` on an item that `setCredentials` didn't write;
+- `getItem` on an item written with `setBytes` whose bytes aren't UTF-8 text;
+- on iOS, a write under a key that another library's item holds in the same service: that item stays, use another key or move it with `/migrate` first.
+
+**Do:** fix the call; the message names the rule. Keep binary data, U+0000 included, in bytes: `setBytes` and `getBytes`.
+
+## Anything else {#other}
+
+### UNKNOWN {#unknown}
+
+A native error the package has no code for.
+
+- **Do:** report it with `nativeCode` and `nativeDomain`; [an issue](https://github.com/apexnative/keychain/issues) helps give it a code.

@@ -1,0 +1,91 @@
+---
+title: On Android
+description: 'How the package stores items on Android: one file per service outside backups, AES-256-GCM bound to its place, a hybrid scheme that writes without a prompt, invalidation, StrongBox and the prompt queue.'
+---
+
+On Android the values live in files of the app, encrypted with keys of the Android Keystore. The keys stay in the TEE or in StrongBox; the files hold only ciphertexts. The module is Kotlin, in the package `dev.apexnative.keychain`.
+
+## The files {#files}
+
+Each service has one file: `noBackupFilesDir/apexnative-keychain/<sha256(service)>.json`.
+
+- **Out of backups by design.** `noBackupFilesDir` is excluded from Auto Backup and from device-to-device transfer. Keystore keys never move to another device, so a ciphertext restored without its key could never be decrypted. Keeping the files out removes the "Could not decrypt after a restore" class of errors without changes to the manifest or a config plugin.
+- **Atomic writes.** A write goes through `AtomicFile`: the new file replaces the old one in one rename.
+- **Concurrency.** Each service has a cache in memory; writes take a lock per service, reads run in parallel.
+- **Lazy.** Nothing happens when the module is created: a file is read the first time its service is used.
+
+The format, version 1:
+
+```json title="<sha256(service)>.json"
+{
+  "v": 1,
+  "service": "vault",
+  "items": {
+    "dbKey": {
+      "scheme": "rsa-oaep+aes-gcm",
+      "alias": "apexnative.keychain/<sha256(service)>/<profile>/<generation>",
+      "iv": "…",
+      "ct": "…",
+      "wk": "…",
+      "enc": "bytes",
+      "ac": "biometryCurrentSet",
+      "acc": "afterFirstUnlock",
+      "sl": "tee",
+      "label": "…",
+      "c": 1730000000000,
+      "m": 1730000000000
+    }
+  }
+}
+```
+
+`profile` is a hash of the key's parameters: the scheme, the `accessControl`, the `authValidity`, the hardware the key is in, and whether the device must be unlocked. Items of the same protection share a Keystore key; items of a different protection get another. A dead key is replaced by a new `generation`, never under its own alias, so the items of the old key read `KEY_INVALIDATED`. `sl` is where the key is, as `getItemInfo` reports it; `av`, the `authValidity`, is there when it isn't 0.
+
+The names of the keys are in the clear in the file, inside the app's sandbox: don't put secrets in key names.
+
+## Items without authentication {#plain}
+
+`accessControl: 'none'` uses an AES-256-GCM key of the Keystore. The Keystore makes the IV; the tag is 128 bits.
+
+The additional authenticated data is `v1 \0 service \0 key`. A ciphertext is bound to its place: copied under another key or into another service, it fails to decrypt, and the read throws `DATA_CORRUPTED`.
+
+## Items with authentication {#auth}
+
+A Keystore key that needs the user for decryption needs them for encryption too, which would make every write show a prompt. The package writes without one, as on iOS, with a hybrid scheme:
+
+1. **Write.** A random data key (AES-256) is made for the item, and the value is encrypted with it in AES-GCM, with the same additional data as above. The data key is wrapped with the public half of an RSA-2048 pair of the Keystore, with `RSA/ECB/OAEPWithSHA-256AndMGF1Padding` (MGF1 with SHA-1, a known requirement of the Keystore). The public key needs no authentication, so there is no prompt.
+2. **Read.** A `Cipher` on the private key goes into a `CryptoObject`; `BiometricPrompt` unlocks it; the data key is unwrapped, the value decrypted, and the data key zeroed.
+
+**Checking the key before a write.** `Cipher.init(DECRYPT_MODE, privateKey)` needs no prompt and throws `KeyPermanentlyInvalidatedException` if the key is dead (for example after a new enrollment). Then the pair is made anew; the old items of that profile throw `KEY_INVALIDATED` at their next read and are removed. Without the check, a write could store a value under a key that will never open again.
+
+**`authValidity > 0`.** The key is made with `setUserAuthenticationParameters(validity, …)`. The Keystore opens its window on any authentication, an unlock of the screen included, and for every key at once, so the package keeps a window of its own, as on iOS: by service and `accessControl`, opened by a prompt of the app, closed when the app goes to the background. A read goes without a prompt only while both are open; the first read after the app starts always prompts. A window needs Android 11: before it, the write throws `UNSUPPORTED`.
+
+| `accessControl` | Key | Prompt allows |
+| --- | --- | --- |
+| `biometryAny` | `AUTH_BIOMETRIC_STRONG`, `invalidatedByBiometricEnrollment = false` | `BIOMETRIC_STRONG` |
+| `biometryCurrentSet` | `AUTH_BIOMETRIC_STRONG`, `invalidatedByBiometricEnrollment = true` | `BIOMETRIC_STRONG` |
+| `biometryAnyOrPasscode` | `AUTH_BIOMETRIC_STRONG \| AUTH_DEVICE_CREDENTIAL`, not invalidated | `BIOMETRIC_STRONG \| DEVICE_CREDENTIAL` |
+| `biometryCurrentSetOrPasscode` | The same, invalidated by enrollment | The same |
+| `passcode` | `AUTH_DEVICE_CREDENTIAL` | `DEVICE_CREDENTIAL` |
+
+The passcode options need API 30: before Android 11, `DEVICE_CREDENTIAL` doesn't work with a `CryptoObject`.
+
+## StrongBox {#strongbox}
+
+`android.keyStorage` picks the hardware of the key: `'tee'` by default; `'strongbox'` tries StrongBox and falls back to the TEE; `'strongboxRequired'` fails with `HARDWARE_UNAVAILABLE` without it. StrongBox is slower, which matters for tokens read at startup, so it isn't the default. `getItemInfo` reports where a key ended up.
+
+## Prompts and threads {#prompts}
+
+- **One prompt at a time.** Prompts wait in one queue, first in, first out. Operations without authentication don't go through it.
+- **An activity.** `BiometricPrompt` needs a `FragmentActivity`; React Native's `ReactActivity` is one. Without it the read fails with `NO_ACTIVITY`. When the activity pauses, the reads still waiting end with `SYSTEM_CANCELED`; the prompt on screen is closed by the system, which says why. Android 16 reports the home button as the user's cancel, `USER_CANCELED`.
+- **A lockout lifted in the prompt.** On Android 15 and newer the user can lift a biometric lockout with the PIN inside the prompt; the package then shows the prompt once more by itself, so the read can still succeed.
+- **The lock on Android 7–8.** Before API 28 there is no `setUnlockedDeviceRequired`, and the package checks the lock itself for a `whenUnlocked*` item: `INTERACTION_NOT_ALLOWED` while the device is locked.
+- **Off the main thread.** File I/O and cryptography run on the package's own executor, off the JS thread and the main thread.
+
+## The biometric state {#biometry-state}
+
+Android has no API for the state of the enrolled biometrics. `getBiometryState` uses a canary key made with `invalidatedByBiometricEnrollment`: when `Cipher.init` on it throws `KeyPermanentlyInvalidatedException`, the set has changed, and a new canary is made. The token is the canary's generation. The canary belongs to no service, so `clear` leaves it.
+
+## Dependencies {#dependencies}
+
+`androidx.biometric` 1.1.0, the latest stable release, and what it brings. No DataStore, no appcompat, no legacy-support. The migration reads react-native-keychain's DataStore file directly, without the DataStore library.

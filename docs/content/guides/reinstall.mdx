@@ -1,0 +1,62 @@
+---
+title: Reinstalls
+description: 'iOS keeps Keychain items after the app is deleted; Android deletes them with the app. clearOnReinstall makes iOS start clean too.'
+---
+
+import { Os } from '@site/src/components/Intro';
+
+The two platforms disagree about what deleting an app means for its secrets:
+
+| | After the app is deleted and installed again |
+| --- | --- |
+| <Os name="iOS" /> | Keychain items are still there. A new install of the app reads the tokens of the old one. |
+| <Os name="Android" /> | Everything is gone: the files of the app and its Keystore keys are deleted with it. |
+
+For many apps the iOS behavior is a surprise: a user deletes the app to sign out, installs it again, and is signed in. Or worse, the app finds a refresh token for an account whose local data no longer exists.
+
+## clearOnReinstall {#clear-on-reinstall}
+
+With `clearOnReinstall` on, the first run after an install on iOS removes the items the package stored before, so both platforms start clean. The two exceptions are below: items in iCloud Keychain and in shared access groups stay.
+
+**Bare app.** Add the key to `Info.plist`:
+
+```xml title="Info.plist"
+<key>ApexKeychainClearOnReinstall</key>
+<true/>
+```
+
+**Expo.** Turn it on in the config plugin; prebuild writes the same key:
+
+```json title="app.json"
+{
+  "expo": {
+    "plugins": [["@apexnative/keychain", { "clearOnReinstall": true }]]
+  }
+}
+```
+
+## How it works {#how}
+
+`UserDefaults` are deleted with the app, Keychain items aren't. On the first Keychain call, the package looks for its install marker in `UserDefaults`:
+
+- the marker is there: this is the same install, nothing happens;
+- it isn't: this is a new install. The package removes its own items, of every service of the app's default access group, before the call goes on, and sets the marker.
+
+What stays:
+
+- **Items in iCloud Keychain** (`synchronizable: true`). Deleting one would delete it on every device of the user's account, the old phone that still has the app too. A fresh install on a new phone must not wipe the old one.
+- **Items in an access group shared with other apps**: those apps may still use them.
+- **Items of other libraries.**
+
+Two more rules:
+
+- **Not before the first unlock.** After a restart, iOS reads `UserDefaults` as empty until the device has been unlocked once, so a new install can't be told from an old one. Until then a call fails with `INTERACTION_NOT_ALLOWED` and deletes nothing; the next call checks again. Background work that starts before the first unlock can't read the items anyway.
+- **Turning it on in an update deletes nothing.** The marker is set from the first run of the package, with the key or without it, so devices that already have the app keep their items when an update adds the key.
+
+Only the items this package wrote are removed: they carry its mark (`kSecAttrCreator`), and the package never touches an item without it. The items of `react-native-keychain` and `expo-secure-store` that you haven't [migrated](../migration/from-react-native-keychain) yet stay too.
+
+The check runs on the first Keychain call, not at app start, as everything in the package: an app that doesn't touch the keychain at launch pays nothing for it. [Config plugin](/api/plugin#clearOnReinstall) has the Expo option.
+
+## When not to use it {#when-not}
+
+Leave it off when surviving a reinstall is the point, for example a device identity that your server ties to the phone, or a key that must not change while the server keeps data encrypted for it. In that case, store such items in a service of their own and remember that on Android they are gone after a reinstall anyway.

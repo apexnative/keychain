@@ -1,0 +1,1423 @@
+/* The ApexNative retro theme: "Paper" in light, "Space" in dark, as on the navigation site (the boards of the Docs
+   page of the brand canvas: DocsHome, DocsPage, DocsApi, DocsOptions, DocsPhone, DocsTokens). What is keychain's own
+   is the accent: steel blue #457B9D instead of navigation's coral. The link color is a darker steel blue in the light
+   theme and a lighter one in the dark theme, so that text links keep 4.5:1 on the paper and on the navy. */
+
+:root {
+  /* The font names stand in properties whose name has "font": the production build's minifier (cssnano's
+     discardUnused) drops every @font-face whose family it doesn't find in such a property, and a var() hides it. */
+  --an-display: var(--ifm-heading-font-family);
+  --an-body: var(--ifm-font-family-base);
+  --an-mono: var(--ifm-font-family-monospace);
+
+  --an-bg: #f4ecdc;
+  --an-surface: #fffaf0;
+  --an-surface2: #efe4cc;
+  --an-text: #1e2a44;
+  --an-muted: #5f5543;
+  --an-link: #386684;
+  --an-accent: #457b9d;
+  --an-line: #e3d6bc;
+  --an-edge: #1e2a44;
+  --an-nav: #1e2a44;
+
+  --ifm-background-color: var(--an-bg);
+  --ifm-background-surface-color: var(--an-surface);
+  --ifm-font-color-base: var(--an-text);
+  --ifm-font-color-secondary: var(--an-muted);
+  --ifm-heading-color: var(--an-text);
+  --ifm-color-primary: #386684;
+  --ifm-color-primary-dark: #325c77;
+  --ifm-color-primary-darker: #305770;
+  --ifm-color-primary-darkest: #27475c;
+  --ifm-color-primary-light: #3e7091;
+  --ifm-color-primary-lighter: #407598;
+  --ifm-color-primary-lightest: #4985ac;
+  --ifm-link-color: var(--an-link);
+  --ifm-link-hover-color: #2d526a;
+  --ifm-link-hover-decoration: none;
+  --ifm-toc-border-color: var(--an-line);
+  --ifm-hr-border-color: var(--an-line);
+  --ifm-code-background: var(--an-surface2);
+  --ifm-color-emphasis-300: var(--an-line);
+
+  --ifm-font-family-base: 'Golos Text', system-ui, sans-serif;
+  --ifm-heading-font-family: 'Righteous', 'Golos Text', sans-serif;
+  --ifm-heading-font-weight: 400;
+  --ifm-font-family-monospace: 'JetBrains Mono', ui-monospace, monospace;
+  --ifm-font-size-base: 15px;
+  --ifm-line-height-base: normal;
+  --ifm-global-radius: 18px;
+  --ifm-code-font-size: 0.88em;
+  --ifm-code-border-radius: 6px;
+  --ifm-code-padding-vertical: 1px;
+  --ifm-code-padding-horizontal: 6px;
+
+  --ifm-navbar-background-color: var(--an-nav);
+  --ifm-navbar-shadow: none;
+  --ifm-footer-background-color: #101828;
+  --doc-sidebar-width: 280px;
+
+  --prism-background-color: #101828;
+  --docusaurus-highlighted-code-line-bg: rgba(233, 185, 73, 0.16);
+}
+
+[data-theme='dark'] {
+  --an-bg: #101828;
+  --an-surface: #1e2a44;
+  --an-surface2: #172238;
+  --an-text: #f3e9d2;
+  --an-muted: #b5a88c;
+  --an-link: #8ab8d6;
+  --an-line: #2b3754;
+  --an-edge: #3a4766;
+  --an-nav: #0b111d;
+
+  --ifm-color-primary: #8ab8d6;
+  --ifm-color-primary-dark: #70a8cd;
+  --ifm-color-primary-darker: #63a0c8;
+  --ifm-color-primary-darkest: #4088b6;
+  --ifm-color-primary-light: #a4c8df;
+  --ifm-color-primary-lighter: #b1d0e4;
+  --ifm-color-primary-lightest: #d8e7f1;
+  --ifm-link-hover-color: #a4c8df;
+}
+
+/* Infima paints the page with its own grey in dark mode (html[data-theme='dark'] wins over our tokens), and the
+   html background shows below the first screen: both take the background of the theme. */
+html[data-theme='dark'] {
+  --ifm-background-color: var(--an-bg);
+}
+
+html {
+  background: var(--an-bg);
+}
+
+body {
+  background: var(--an-bg);
+  color: var(--an-text);
+  font-family: var(--an-body);
+}
+
+a:hover {
+  text-decoration: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.eyebrow {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+:focus-visible {
+  outline: 3px solid #e9b949;
+  outline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- navbar */
+
+/* The header of the boards: brand, version, links, then search, GitHub and the theme at the end. */
+.navbar {
+  --ifm-navbar-padding-vertical: 10px;
+  --ifm-navbar-padding-horizontal: clamp(16px, 3vw, 32px);
+  height: auto;
+  min-height: 63px;
+  border-bottom: 3px solid #101828;
+  box-shadow: none;
+  font-family: var(--an-body);
+  line-height: normal;
+}
+
+.navbar__inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  gap: 12px 24px;
+}
+
+/* The home board is 1320 wide, the pages 1440. */
+html:has(.home-page) .navbar__inner {
+  max-width: 1320px;
+}
+
+.navbar__items {
+  gap: 20px;
+}
+
+.navbar__items--right {
+  gap: 10px;
+}
+
+.navbar__brand {
+  gap: 10px;
+  margin-right: 4px;
+  color: #f3e9d2;
+}
+
+.navbar__brand:hover {
+  color: #f3e9d2;
+}
+
+.navbar__logo {
+  width: 36px;
+  height: 36px;
+  margin: 0;
+}
+
+.navbar__logo img {
+  height: 36px;
+}
+
+.navbar__title {
+  font-family: var(--an-display);
+  font-size: 22px;
+  font-weight: 400;
+  color: #f3e9d2;
+}
+
+.navbar__item {
+  padding: 0;
+}
+
+.navbar__link {
+  color: #d9cfb8;
+  font-weight: 500;
+  font-size: 15px;
+  padding: 6px 0;
+  border-bottom: 2px solid transparent;
+}
+
+.navbar__link:hover {
+  color: #f3e9d2;
+}
+
+.navbar__link--active {
+  color: #f3e9d2;
+  border-bottom-color: #e9b949;
+}
+
+/* The arrow is in the label of the board's external link. */
+.navbar__link svg {
+  display: none;
+}
+
+.ver {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  color: #e9b949;
+  background: transparent;
+  border: 1px solid #3a4766;
+  border-radius: 999px;
+  padding: 5px 10px;
+  margin-right: 4px;
+  cursor: pointer;
+}
+
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid #3a4766;
+  background: transparent;
+  color: #f3e9d2;
+  cursor: pointer;
+  padding: 0;
+}
+
+.iconbtn:hover {
+  border-color: #e9b949;
+  color: #e9b949;
+}
+
+.iconbtn svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.theme-toggle .theme-toggle__sun,
+[data-theme='dark'] .theme-toggle .theme-toggle__moon {
+  display: none;
+}
+
+[data-theme='dark'] .theme-toggle .theme-toggle__sun {
+  display: block;
+}
+
+.navbar__toggle {
+  color: #f3e9d2;
+}
+
+.navbar-sidebar__brand {
+  background: var(--an-nav);
+}
+
+/* ---------------------------------------------------------- page layout */
+
+/* .layout of DocsPage: sidebar 280, the page, "On this page" 240 from 1200 px; one column of 1440 at most. */
+[class*='docRoot_'] {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* Docusaurus pulls the sidebar up under the navbar for its sticky menu; the board's sidebar starts below it. */
+.theme-doc-sidebar-container {
+  width: 280px !important;
+  margin-top: 0 !important;
+  background: var(--an-surface);
+  border-right: 2px solid var(--an-line) !important;
+  clip-path: none;
+}
+
+.theme-doc-sidebar-container [class*='sidebarViewport'] {
+  position: static;
+  max-height: none;
+  height: auto;
+}
+
+.doc-main {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.doc-layout {
+  display: flex;
+  align-items: stretch;
+}
+
+.doc-column {
+  flex: 999 1 560px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 28px clamp(16px, 4vw, 56px) 72px;
+}
+
+.toc {
+  display: none;
+}
+
+.toc-mobile {
+  display: block;
+}
+
+@media (min-width: 1200px) {
+  .toc {
+    display: block;
+    flex: 0 0 240px;
+    box-sizing: border-box;
+    padding: 32px 24px 32px 0;
+  }
+
+  .toc-mobile {
+    display: none;
+  }
+}
+
+.toc__sticky {
+  position: sticky;
+  top: calc(63px + 24px);
+  /* A long page has a long list: it scrolls on its own, inside the window, and leaves the page where it is. */
+  max-height: calc(100vh - 63px - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--an-line, rgba(0, 0, 0, 0.2)) transparent;
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+.side {
+  box-sizing: border-box;
+  padding: 22px 14px;
+  font-family: var(--an-body);
+  line-height: normal;
+}
+
+.side__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--an-muted);
+  font-family: var(--an-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 10px;
+  cursor: pointer;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.cat:hover {
+  background: var(--an-surface2);
+}
+
+.cat__chevron {
+  display: block;
+  width: 12px;
+  height: 12px;
+  transition: transform 0.2s ease;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cat__items {
+  padding: 2px 0 8px;
+}
+
+.sl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin: 2px 0;
+  border-radius: 10px;
+  color: var(--an-text);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.sl:hover {
+  background: var(--an-surface2);
+  color: var(--an-text);
+}
+
+.sl-on,
+.sl-on:hover {
+  background: #e9b949;
+  color: #101828;
+  font-weight: 600;
+}
+
+.ss {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  margin: 1px 0;
+  border-radius: 10px;
+  color: var(--an-text);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.ss:hover {
+  background: var(--an-surface2);
+  color: var(--an-text);
+}
+
+.ss-on {
+  font-weight: 600;
+}
+
+.subs {
+  margin: 2px 0 6px 16px;
+  padding-left: 12px;
+  border-left: 2px solid #e9b949;
+}
+
+.si {
+  display: block;
+  padding: 6px 10px;
+  margin: 1px 0;
+  border-radius: 10px;
+  font-family: var(--an-mono);
+  font-size: 12px;
+  color: var(--an-text);
+  text-decoration: none;
+}
+
+.si:hover {
+  background: var(--an-surface2);
+  color: var(--an-text);
+}
+
+.si-on,
+.si-on:hover {
+  background: #e9b949;
+  color: #101828;
+  font-weight: 600;
+}
+
+.dot,
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  box-sizing: border-box;
+}
+
+.st-stable,
+.status-dot--stable {
+  background: #2a9d8f;
+  border: 2px solid #2a9d8f;
+}
+
+.st-review,
+.status-dot--review {
+  background: #e9b949;
+  border: 2px solid #e9b949;
+}
+
+.st-draft,
+.status-dot--draft {
+  background: transparent;
+  border: 2px solid var(--an-muted);
+}
+
+.st-planned,
+.status-dot--planned {
+  background: transparent;
+  border: 2px dashed var(--an-muted);
+}
+
+.sl-on .st-draft,
+.sl-on .st-planned {
+  border-color: #101828;
+}
+
+.station {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 2px dashed var(--an-line);
+  color: var(--an-text);
+  text-decoration: none;
+}
+
+.station:hover {
+  color: var(--an-text);
+}
+
+.station img {
+  flex: none;
+}
+
+.station__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.station__name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.station__note {
+  font-size: 12px;
+  color: var(--an-muted);
+}
+
+.legend {
+  margin-top: 18px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 2px dashed var(--an-line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--an-muted);
+}
+
+.legend__title {
+  font-size: 10px;
+}
+
+.legend__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ------------------------------------------------------------ breadcrumbs */
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--an-mono);
+  font-size: 11px;
+  line-height: normal;
+}
+
+.crumb {
+  color: var(--an-muted);
+  text-decoration: none;
+}
+
+a.crumb:hover {
+  color: var(--an-link);
+}
+
+.crumbs__sep {
+  color: var(--an-line);
+}
+
+.crumbs__here {
+  color: var(--an-text);
+}
+
+/* ----------------------------------------------------------------- content */
+
+.theme-doc-markdown.markdown {
+  font-family: var(--an-body);
+  font-size: 15px;
+  line-height: normal;
+  --ifm-h1-vertical-rhythm-bottom: 0;
+  --ifm-h2-vertical-rhythm-top: 0;
+  --ifm-heading-vertical-rhythm-top: 0;
+  --ifm-heading-vertical-rhythm-bottom: 0;
+}
+
+.theme-doc-markdown.markdown > header {
+  margin: 0;
+}
+
+.theme-doc-markdown.markdown h1.page-title {
+  font-family: var(--an-display);
+  font-weight: 400;
+  font-size: clamp(30px, 3.8vw, 41px);
+  line-height: 1.05;
+  margin: 18px 0 0;
+}
+
+.theme-doc-markdown.markdown .page-lead {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--an-muted);
+  max-width: 720px;
+  margin: 14px 0 0;
+}
+
+.theme-doc-markdown.markdown h2 {
+  font-family: var(--an-display);
+  font-weight: 400;
+  font-size: clamp(20.5px, 2.4vw, 26px);
+  line-height: 1.15;
+  margin: 48px 0 0;
+  scroll-margin-top: calc(63px + 24px);
+}
+
+.theme-doc-markdown.markdown h3 {
+  font-family: var(--an-mono);
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.3;
+  margin: 32px 0 0;
+  scroll-margin-top: calc(63px + 24px);
+}
+
+/* A part of an h3, such as one key of a group of keys. */
+.theme-doc-markdown.markdown h4 {
+  font-family: var(--an-body);
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.3;
+  margin: 24px 0 0;
+  scroll-margin-top: calc(63px + 24px);
+}
+
+/* The "#" after a heading: always there in the color of the lines, the link color on hover. */
+.theme-doc-markdown .hash-link {
+  opacity: 1;
+  padding: 0;
+  margin-left: 8px;
+  color: var(--an-line);
+  font-family: var(--an-mono);
+  font-size: 0.7em;
+  text-decoration: none;
+}
+
+.theme-doc-markdown .hash-link::before {
+  content: '#';
+}
+
+.theme-doc-markdown h2:hover .hash-link,
+.theme-doc-markdown h3:hover .hash-link,
+.theme-doc-markdown h4:hover .hash-link {
+  color: var(--an-link);
+}
+
+.theme-doc-markdown.markdown p,
+.theme-doc-markdown.markdown ul,
+.theme-doc-markdown.markdown ol {
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 12px 0 0;
+}
+
+.theme-doc-markdown.markdown li + li {
+  margin-top: 4px;
+}
+
+/* Inline code: .icode of the boards. */
+.markdown code,
+.prose code {
+  font-family: var(--an-mono);
+  font-size: 0.88em;
+  background: var(--an-surface2);
+  border: 1px solid var(--an-line);
+  border-radius: 6px;
+  padding: 1px 6px;
+  vertical-align: baseline;
+}
+
+.markdown pre code,
+.prose pre code {
+  font-size: inherit;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* ------------------------------------------------------------- code blocks */
+
+.theme-code-block.cb,
+.cb {
+  background: #101828;
+  color: #f3e9d2;
+  border: 2px solid #0b111d;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 5px 0 #0b111d;
+  margin: 18px 0 0;
+}
+
+.cb__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 16px;
+  background: #1e2a44;
+  border-bottom: 2px solid #0b111d;
+  color: #b5a88c;
+}
+
+.cb__title {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  line-height: normal;
+}
+
+.cb__copy {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  line-height: normal;
+  color: #f3e9d2;
+  background: transparent;
+  border: 1px solid #3a4766;
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.cb__copy:hover {
+  border-color: #e9b949;
+  color: #e9b949;
+}
+
+.cb__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The API before the package has it: a tag in keychain's steel blue, a shade darker than the accent so that the small
+   cream text keeps 4.5:1. */
+.cb__preview {
+  font-family: var(--an-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: normal;
+  color: #f3e9d2;
+  background: #386684;
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.cb__tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.cb__tab {
+  font-family: var(--an-mono);
+  font-size: 12px;
+  line-height: normal;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  background: transparent;
+  color: #d9cfb8;
+}
+
+.cb__tab--on {
+  background: #e9b949;
+  color: #101828;
+}
+
+.cb__body {
+  position: relative;
+}
+
+.cb pre,
+.cb__plain {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  font-family: var(--an-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: #f3e9d2;
+}
+
+.cb pre > code {
+  display: block;
+  padding: 16px 18px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.cb pre.cb__plain {
+  padding: 16px 18px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.cb__prompt,
+.cb .language-bash .token-line::before {
+  color: #8c9ab5;
+}
+
+/* Shell lines start with the prompt of the board ("$"); copying leaves it out. */
+.cb .language-bash .token-line:not(:empty)::before {
+  content: '$ ';
+}
+
+/* --------------------------------------------------------------- admonitions */
+
+.adm {
+  --adm-color: #5fa8d3;
+  --adm-ink: #101828;
+  margin: 22px 0 0;
+  border: 2px solid var(--an-edge);
+  border-radius: 18px;
+  background: var(--an-surface);
+  box-shadow: 0 4px 0 var(--adm-color);
+  overflow: hidden;
+  color: var(--an-text);
+}
+
+.theme-doc-markdown.markdown > header + .adm,
+.theme-doc-markdown.markdown > .adm:first-child {
+  margin-top: 26px;
+}
+
+.adm--note {
+  --adm-color: #5fa8d3;
+}
+
+.adm--tip {
+  --adm-color: #2a9d8f;
+}
+
+.adm--info {
+  --adm-color: #e9b949;
+}
+
+.adm--warning {
+  --adm-color: #e76f51;
+}
+
+.adm--danger {
+  --adm-color: #d1495b;
+  --adm-ink: #f3e9d2;
+}
+
+.adm__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  background: var(--adm-color);
+  color: var(--adm-ink);
+}
+
+.adm__head svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.adm__title {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+  text-transform: uppercase;
+  line-height: normal;
+}
+
+.adm__body {
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.theme-doc-markdown.markdown .adm__body p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.theme-doc-markdown.markdown .adm__body p + p {
+  margin-top: 10px;
+}
+
+/* The banner of a version that isn't a stable release, over the breadcrumbs of every page (DocVersionBanner). */
+.version-banner {
+  margin: 0 0 20px;
+}
+
+/* A version is written as npm writes it, not in the capitals of the title. */
+.version-banner__label {
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+.version-banner .adm__body p {
+  margin: 0;
+}
+
+.version-banner .adm__body p + p {
+  margin-top: 8px;
+}
+
+/* ---------------------------------------------------------------- tables */
+
+.table-box {
+  overflow-x: auto;
+  margin: 18px 0 0;
+  border: 2px solid var(--an-edge);
+  border-radius: 16px;
+  background: var(--an-surface);
+}
+
+.table-box table {
+  display: table;
+  width: 100%;
+  min-width: 520px;
+  margin: 0;
+  border-collapse: collapse;
+  text-align: left;
+  overflow: visible;
+}
+
+.table-box thead tr {
+  background: var(--an-surface2);
+  border: 0;
+}
+
+.table-box tr,
+.table-box tr:nth-child(2n) {
+  background: transparent;
+  border: 0;
+}
+
+.table-box th {
+  font-family: var(--an-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--an-muted);
+  padding: 10px 14px;
+  border: 0;
+  text-align: left;
+  line-height: normal;
+}
+
+.table-box td {
+  padding: 10px 14px;
+  border: 0;
+  border-top: 1px solid var(--an-line);
+  vertical-align: top;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------ page footer */
+
+.doc-foot {
+  margin-top: 40px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--an-muted);
+  line-height: normal;
+}
+
+.doc-foot__edit {
+  color: var(--an-link);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.doc-foot__date {
+  font-family: var(--an-mono);
+  font-size: 11px;
+}
+
+.pager-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 22px;
+  line-height: normal;
+}
+
+.pager {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 20px;
+  border: 2px solid var(--an-edge);
+  border-radius: 18px;
+  background: var(--an-surface);
+  color: var(--an-text);
+  text-decoration: none;
+  transition: transform 0.2s ease;
+}
+
+.pager:hover {
+  color: var(--an-text);
+  transform: translateY(-3px);
+  box-shadow: 0 4px 0 var(--an-accent);
+}
+
+.pager--next {
+  text-align: right;
+}
+
+.pager__sub {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  color: var(--an-muted);
+}
+
+.pager__label {
+  font-family: var(--an-display);
+  font-size: 16.5px;
+}
+
+/* The reference pages name code: mono labels (DocsApi). */
+.pager__label--code {
+  font-family: var(--an-mono);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------ on this page */
+
+.toc__title {
+  color: var(--an-muted);
+  margin-bottom: 12px;
+}
+
+.toc__list,
+.toc__list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc__list li {
+  margin: 0;
+}
+
+.tl {
+  display: block;
+  padding: 5px 0 5px 14px;
+  border-left: 2px solid var(--an-line);
+  color: var(--an-muted);
+  text-decoration: none;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tl:hover {
+  color: var(--an-link);
+}
+
+.tl-on {
+  border-left-color: var(--an-accent);
+  color: var(--an-text);
+  font-weight: 600;
+}
+
+.toc__list ul .tl {
+  padding-left: 26px;
+  font-family: var(--an-mono);
+  font-size: 11px;
+}
+
+.showcase-card {
+  margin-top: 28px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #101828;
+  color: #d9cfb8;
+  border: 2px solid #0b111d;
+  line-height: normal;
+}
+
+.showcase-card img {
+  display: block;
+}
+
+.showcase-card__title {
+  font-family: var(--an-display);
+  font-size: 16.5px;
+  color: #f3e9d2;
+  margin-top: 10px;
+}
+
+.showcase-card__text {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+
+.showcase-card__link {
+  display: inline-block;
+  margin-top: 10px;
+  color: #e9b949;
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.showcase-card__link:hover {
+  color: #e9b949;
+}
+
+/* ---------------------------------------------------------------- footer */
+
+.footer {
+  padding: 0;
+  background: #101828;
+  color: #d9cfb8;
+  line-height: normal;
+}
+
+.footer__inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 22px clamp(16px, 3vw, 32px);
+}
+
+.footer--row {
+  color: #b5a88c;
+  border-top: 3px solid #0b111d;
+}
+
+.footer--home .footer__inner {
+  max-width: 1320px;
+}
+
+.footer__top {
+  padding: 56px clamp(16px, 3vw, 32px) 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 48px;
+  justify-content: space-between;
+}
+
+.footer__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 320px;
+}
+
+.footer__brand p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.footer__brand-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--an-display);
+  font-size: 24px;
+  color: #f3e9d2;
+}
+
+.footer__columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 56px;
+}
+
+.footer__column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.footer__eyebrow {
+  font-family: var(--an-mono);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #e9b949;
+}
+
+.footer__link-an {
+  color: #d9cfb8;
+  text-decoration: none;
+  font-size: 15px;
+}
+
+.footer__link-an:hover {
+  color: #e9b949;
+}
+
+.footer__bottom {
+  padding: 18px clamp(16px, 3vw, 32px) 30px;
+  border-top: 1px solid #1e2a44;
+}
+
+.footer__fleet-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--an-mono);
+  font-size: 12px;
+}
+
+.footer__fleet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #b5a88c;
+}
+
+.footer--home .footer__license {
+  color: #8c836f;
+}
+
+/* ------------------------------------------------------------ phone (DocsPhone) */
+
+.crumbs-back {
+  display: none;
+  font-family: var(--an-mono);
+  font-size: 12px;
+  color: var(--an-muted);
+  text-decoration: none;
+}
+
+.toc-mobile [class*='tocCollapsible_'] {
+  margin: 14px 0 0;
+  background: var(--an-surface);
+  border: 2px solid var(--an-line);
+  border-radius: 12px;
+}
+
+.toc-mobile [class*='tocCollapsibleButton'] {
+  min-height: 44px;
+  padding: 0 14px;
+  font-family: var(--an-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--an-text);
+}
+
+.toc-mobile [class*='tocCollapsibleContent'] a {
+  color: var(--an-muted);
+  font-size: 13px;
+}
+
+/* The drawer: the head of the menu, Docs and API as a switch, the sections with their dots. */
+.navbar-sidebar.drawer {
+  width: 318px;
+  max-width: 88vw;
+  background: var(--an-surface);
+  border-right: 3px solid #101828;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.navbar-sidebar__backdrop {
+  background: rgba(16, 24, 40, 0.62);
+}
+
+.drawer__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 60px;
+  flex: none;
+  padding: 0 10px 0 14px;
+  border-bottom: 2px solid var(--an-line);
+  box-sizing: border-box;
+}
+
+.drawer__name {
+  font-family: var(--an-display);
+  font-size: 18.5px;
+  flex: 1;
+  color: var(--an-text);
+}
+
+.drawer__close.iconbtn {
+  width: 44px;
+  height: 44px;
+  color: var(--an-text);
+  border-color: var(--an-line);
+}
+
+.drawer__switch {
+  display: flex;
+  margin: 12px 12px 0;
+  border: 2px solid var(--an-edge);
+  border-radius: 12px;
+  overflow: hidden;
+  flex: none;
+}
+
+.drawer__tab {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--an-text);
+  font-family: var(--an-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.drawer__tab + .drawer__tab {
+  border-left: 2px solid var(--an-edge);
+}
+
+.drawer__tab--on {
+  background: var(--an-text);
+  color: var(--an-bg);
+}
+
+.drawer__list {
+  padding: 4px 12px 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.drawer__list .cat {
+  padding: 12px 6px 6px;
+}
+
+.drawer__list .ss,
+.drawer__list .sl {
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.drawer__list .si {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+@media (max-width: 996px) {
+  .navbar {
+    min-height: 63px;
+    --ifm-navbar-padding-horizontal: 10px;
+  }
+
+  .navbar__toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    box-sizing: border-box;
+    border-radius: 12px;
+    border: 1px solid #3a4766;
+    margin-right: 0;
+  }
+
+  .navbar__brand {
+    gap: 8px;
+  }
+
+  .navbar__logo,
+  .navbar__logo img {
+    width: 30px;
+    height: 30px;
+  }
+
+  .navbar__title {
+    font-size: 20px;
+  }
+
+  .crumbs-back {
+    display: inline-block;
+  }
+
+  .crumbs--api {
+    display: none;
+  }
+
+  .doc-column {
+    padding: 14px 16px 48px;
+  }
+}

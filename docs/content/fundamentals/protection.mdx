@@ -1,0 +1,162 @@
+---
+title: Protection
+description: 'accessible says when an item can be read, accessControl says who has to be there. Every value, what it means on each platform, and what happens when a device cannot provide it.'
+---
+
+import { Os } from '@site/src/components/Intro';
+
+Two options protect an item, and they answer different questions:
+
+- **`accessible`**: when can the item be read? After the first unlock since a restart, or only while the device is unlocked.
+- **`accessControl`**: who has to be there? Nobody, the enrolled biometrics, or the person who knows the passcode.
+
+Both are set when the item is written and stay with it. Each value means the same on iOS and Android; a value the device can't provide is an error, never a weaker item.
+
+```ts
+import { AccessControl, Accessible, keychain } from '@apexnative/keychain';
+
+await keychain.setItem('refreshToken', token, {
+  accessible: Accessible.WhenUnlockedThisDeviceOnly,
+  accessControl: AccessControl.BiometryCurrentSet,
+});
+```
+
+### Constants or strings {#constants}
+
+Every value of an option has a constant: `AccessControl.BiometryCurrentSet` is the string `'biometryCurrentSet'`, `Accessible.AfterFirstUnlock` is `'afterFirstUnlock'`, `KeyStorage.Strongbox` is `'strongbox'`. A constant is a plain object with a type of the same name, not a TypeScript `enum`, so the strings work too, and both type-check:
+
+```ts
+await keychain.setItem('pin', pin, { accessControl: AccessControl.BiometryCurrentSetOrPasscode });
+await keychain.setItem('pin', pin, { accessControl: 'biometryCurrentSetOrPasscode' }); // the same
+```
+
+The constants catch a typo at compile time and show every value in the editor's completion; the strings read well in JSON and in shared configuration. The tables below give the values as strings. The same pattern holds for what the package returns: `BiometryType` (`getBiometryTypes`), `HardwareSecurityLevel` (`getHardwareSecurityLevel`) and the codes of `KeychainErrorCode`.
+
+## accessible {#accessible}
+
+| Value | Readable | On Android |
+| --- | --- | --- |
+| `afterFirstUnlock` (default) | From the first unlock after a restart, including in the background | A regular Keystore key: an app without direct boot doesn't start before the first unlock, so the meaning is the same |
+| `afterFirstUnlockThisDeviceOnly` | The same, and the item never moves to another device | The same as `afterFirstUnlock` |
+| `whenUnlocked` | Only while the device is unlocked | A key with `setUnlockedDeviceRequired(true)` on Android 9 (API 28) and newer; before, the package checks the lock itself |
+| `whenUnlockedThisDeviceOnly` | The same, and the item never moves to another device | The same as `whenUnlocked` |
+| `whenPasscodeSetThisDeviceOnly` | While unlocked, and only while the device has a passcode | The write checks that the device is secure; a key with authentication is invalidated when the screen lock is removed |
+
+On iOS each value is the `kSecAttrAccessible` constant of the same name: `kSecAttrAccessibleAfterFirstUnlock`, `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and so on.
+
+The default is `afterFirstUnlock` because tokens are often read by background work: a silent push, a background fetch, a refresh timer. With `whenUnlocked*`, a read or a write while the device is locked fails with `INTERACTION_NOT_ALLOWED`.
+
+`ThisDeviceOnly` changes nothing on Android: Keystore keys never leave the device. On iOS it keeps the item out of iCloud Keychain and out of a backup restored to another device.
+
+iOS's `always` (deprecated by Apple) and `applicationPassword` aren't supported.
+
+## accessControl {#access-control}
+
+| Value | Who unlocks the item | iOS flags | Android prompt allows |
+| --- | --- | --- | --- |
+| `none` (default) | Nobody: no prompt | — (only `accessible`) | — |
+| `biometryAny` | Any biometrics, enrolled now or later | `.biometryAny` | `BIOMETRIC_STRONG` |
+| `biometryCurrentSet` | Only the biometrics enrolled at write time | `.biometryCurrentSet` | `BIOMETRIC_STRONG` |
+| `biometryAnyOrPasscode` | Biometrics or the device passcode | `.userPresence` | `BIOMETRIC_STRONG \| DEVICE_CREDENTIAL` |
+| `biometryCurrentSetOrPasscode` | Today's biometrics or the passcode | `.biometryCurrentSet, .or, .devicePasscode` | `BIOMETRIC_STRONG \| DEVICE_CREDENTIAL` |
+| `passcode` | The device passcode | `.devicePasscode` | `DEVICE_CREDENTIAL` |
+
+On Android each value has a Keystore key of its own, with the same authenticators and, for `biometryCurrentSet*`, invalidation on a new enrollment; [On Android](../security/android#auth) has the parameters.
+
+**`currentSet` or `any`.** With `biometryCurrentSet*`, a change of the enrolled biometrics, such as a new fingerprint or face, makes the item unreadable: the next read throws `KEY_INVALIDATED` and the item is removed. That protects against someone who learns the passcode and enrolls their own face. With `biometryAny*`, the item survives changes of the enrolled set. [How biometrics works](./biometrics#invalidation) has the details.
+
+**Passcode on Android.** The options with a passcode need Android 11 (API 30) or newer: before it, `DEVICE_CREDENTIAL` can't unlock a key that a read uses through `CryptoObject`. On Android 7–10, `canUseAccessControl` answers `unsupportedOS` and a write throws `UNSUPPORTED`.
+
+**Biometrics on Android** means Class 3 (strong) biometrics, the only kind that can unlock a Keystore key. On many phones face unlock is Class 2: such a phone offers only its fingerprint sensor to these items.
+
+## Never weaker {#never-weaker}
+
+If the device can't give an item the protection it asks for at write time, the write fails, on both platforms:
+
+| At write time | Error |
+| --- | --- |
+| No biometrics enrolled, for `biometryAny`, `biometryCurrentSet` or `biometryCurrentSetOrPasscode` (the passcode doesn't make up for it) | `BIOMETRY_NOT_ENROLLED` |
+| No sensor, for the same three | `BIOMETRY_NOT_AVAILABLE` |
+| No passcode, for any `accessControl` but `none`, or for `whenPasscodeSetThisDeviceOnly` | `PASSCODE_NOT_SET` |
+| A passcode option, or `authValidity` above 0, on Android 7–10 | `UNSUPPORTED` |
+| iOS: a biometric option without `NSFaceIDUsageDescription`, on a device with Face ID | `MISSING_USAGE_DESCRIPTION` |
+
+`biometryAnyOrPasscode` and `passcode` need only the passcode: on a device without biometrics, the passcode opens them.
+
+The package never falls back to an item without protection. Check before you offer a protection in the UI:
+
+```ts
+import { AccessControl, canUseAccessControl } from '@apexnative/keychain';
+
+const result = await canUseAccessControl(AccessControl.BiometryCurrentSetOrPasscode);
+if (result.available) {
+  showEnableFaceId();
+} else {
+  // 'unsupportedOS' | 'noHardware' | 'passcodeNotSet' | 'notEnrolled'
+  explain(result.reason);
+}
+```
+
+`canUseAccessControl` gives the answer the write would get, and never shows a prompt; a temporary lockout of the biometrics doesn't make an option unavailable. See [canUseAccessControl](/api/device/canUseAccessControl).
+
+## authValidity {#auth-validity}
+
+By default (`authValidity: 0`) every read of a protected item shows the prompt. With `authValidity`, in seconds, one successful prompt opens the items of the same service and the same `accessControl` for that long:
+
+```ts
+const vault = createKeychain({
+  service: 'vault',
+  accessControl: AccessControl.BiometryAnyOrPasscode,
+  authValidity: 30,
+});
+
+const a = await vault.getItem('a'); // the prompt
+const b = await vault.getItem('b'); // within 30 seconds: no prompt
+```
+
+The window is the package's own, and works the same on both platforms:
+
+- **It starts with a prompt of this app.** The first read after the app starts always shows the prompt; unlocking the screen opens nothing.
+- **It belongs to a service and an `accessControl`.** A prompt for the vault's `biometryAnyOrPasscode` items doesn't open another service, nor the vault's `passcode` items.
+- **It closes** after `authValidity` seconds, and at once when the app goes to the background.
+
+| | iOS | Android |
+| --- | --- | --- |
+| How | The `LAContext` that passed is kept and handed to the next reads | The key is made with `setUserAuthenticationParameters(validity, …)`, and the package keeps its own window on top of the Keystore's, which is only the outer limit |
+| Needs | iOS 15.1, like the package | Android 11 (API 30): before, a write with a window throws `UNSUPPORTED` |
+
+`biometryCurrentSet` and `biometryCurrentSetOrPasscode` can't be combined with `authValidity > 0`: the write throws `INVALID_ARGUMENT` on both platforms. Android invalidates a key on new enrollments only when it needs authentication for every use, so with a window "current set" would silently mean "any".
+
+## The prompt {#prompt}
+
+`prompt` sets the text of the system prompt. It is an option of the storage and of every read:
+
+| Field | iOS | Android |
+| --- | --- | --- |
+| `title` | `LAContext.localizedReason`: the reason the system shows with the prompt | The title of `BiometricPrompt` |
+| `subtitle` | — | The subtitle |
+| `description` | — | The description |
+| `cancel` | `localizedCancelTitle` | The negative button (only for options without a passcode: with one, the system shows its own button to enter it) |
+| `fallback` | `localizedFallbackTitle`, shown after a failed scan; `''` hides the button. A tap ends a read of `biometryAny` or `biometryCurrentSet` with `USER_FALLBACK`; for the others the fallback is the passcode | — |
+| `confirmationRequired` | — | Whether a passive biometric (a face) needs a tap to confirm; `true` by default |
+
+A field a platform doesn't have is ignored there, so one `prompt` works for both.
+
+## Hardware on Android {#key-storage}
+
+`android.keyStorage` chooses where Android keeps the item's key:
+
+| Value | Key in |
+| --- | --- |
+| `'tee'` (default) | The Trusted Execution Environment |
+| `'strongbox'` | StrongBox, a separate secure chip, when the device has one; the TEE otherwise |
+| `'strongboxRequired'` | StrongBox; without it the write throws `HARDWARE_UNAVAILABLE` |
+
+The default is the TEE because StrongBox is markedly slower, and tokens are read at startup. `getItemInfo` reports where an item's key is (`android.securityLevel`), and `getHardwareSecurityLevel()` what the device offers. iOS protects keychain items with keys guarded by the Secure Enclave and ignores the option.
+
+## iOS only {#ios-only}
+
+Two options exist only on iOS, and Android ignores them so that shared code needs no `Platform.select`:
+
+- `synchronizable: true` puts the item in iCloud Keychain <Os name="iOS" />. It can't be combined with `*ThisDeviceOnly` or with an `accessControl` other than `none` (`INVALID_ARGUMENT`). On Android it is ignored, with a warning in development. See [iCloud Keychain](../guides/icloud-keychain).
+- `accessGroup` shares items with other apps and extensions of the same team <Os name="iOS" />. It is the full group, with the team id. Android has no safe equivalent and ignores it. See [Sharing between apps](../guides/sharing-between-apps).

@@ -1,0 +1,53 @@
+---
+title: HardwareSecurityLevel
+description: 'The hardware that keeps Keystore keys on Android: StrongBox, the Trusted Execution Environment, or software. A constant object and a type of the same name.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Constants" importName="HardwareSecurityLevel" />
+
+What [`getHardwareSecurityLevel`](./getHardwareSecurityLevel) answers for the device, and what [`getItemInfo`](/api/storage/methods#getItemInfo) reports as `android.securityLevel` for an item.
+
+## Usage {#usage}
+
+```ts
+import { HardwareSecurityLevel, keychain } from '@apexnative/keychain';
+
+const info = await keychain.getItemInfo('accessToken');
+const inHardware = info?.android?.securityLevel !== HardwareSecurityLevel.Software;
+```
+
+## Signature {#signature}
+
+```ts
+const HardwareSecurityLevel: {
+  readonly Strongbox: 'strongbox';
+  readonly Tee: 'tee';
+  readonly Software: 'software';
+};
+
+type HardwareSecurityLevel = (typeof HardwareSecurityLevel)[keyof typeof HardwareSecurityLevel];
+```
+
+<Facts type="'strongbox' | 'tee' | 'software'" platforms={['android']} />
+
+## Values {#values}
+
+| Constant | String | The key lives in |
+| --- | --- | --- |
+| `Strongbox` | `'strongbox'` | A StrongBox secure element: a separate chip with its own processor and storage |
+| `Tee` | `'tee'` | The Trusted Execution Environment of the main processor |
+| `Software` | `'software'` | Software only: an emulator, or a device without secure hardware |
+
+The same strings name the hardware in [`KeyStorage`](/api/options/KeyStorage), the option that asks for it.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'getHardwareSecurityLevel', text: 'What the device offers.', to: '/api/device/getHardwareSecurityLevel' },
+    { name: 'KeyStorage', text: 'Where an item\'s key is asked to live.', to: '/api/options/KeyStorage' },
+  ]}
+/>

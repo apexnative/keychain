@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(yarn *)",
+      "Bash(bundle install *)",
+      "Bash(xcrun simctl *)",
+      "Bash(scripts/android-env.sh *)",
+      "Bash(adb *)",
+      "Bash(scripts/*)",
+      "Edit(~/.gradle/**)",
+      "Edit(~/.android/**)",
+      "Edit(~/.cocoapods/**)",
+      "Edit(~/Library/Caches/CocoaPods/**)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(yarn add *)",
+      "Bash(yarn remove *)",
+      "Bash(yarn up *)"
+    ],
+    "deny": ["Bash(yarn release *)", "Bash(npm publish *)", "Bash(yarn npm publish *)"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/pre-edit.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking copyright headers"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/use-scripts.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking for a script that runs this"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/format.mjs\"",
+            "timeout": 30,
+            "statusMessage": "Formatting the file"
+          }
+        ]
+      }
+    ]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  }
+}

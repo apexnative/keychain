@@ -1,0 +1,80 @@
+---
+title: AccessControl
+description: 'What unlocks an item: nothing, any enrolled biometrics, the biometrics enrolled at write time, the device passcode, or biometrics with the passcode as a fallback. A constant object and a type of the same name.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Constants" importName="AccessControl" />
+
+`AccessControl` is the value of the [`accessControl`](./KeychainOptions#access-control) option, of [`canUseAccessControl`](/api/device/canUseAccessControl), and what [`getItemInfo`](/api/storage/methods#getItemInfo) reports. Anything but `None` locks the value with a key the system releases only after the user passes the prompt: a read shows the prompt, a write never does. `AccessControl.BiometryCurrentSet` is the string `'biometryCurrentSet'`; both forms are accepted.
+
+## Usage {#usage}
+
+```ts
+import { AccessControl, canUseAccessControl, createKeychain } from '@apexnative/keychain';
+
+const vault = createKeychain({ service: 'vault', accessControl: AccessControl.BiometryCurrentSet });
+
+if ((await canUseAccessControl(AccessControl.BiometryCurrentSet)).available) {
+  await vault.setItem('refreshToken', token);
+}
+```
+
+## Signature {#signature}
+
+```ts
+const AccessControl: {
+  readonly None: 'none';
+  readonly BiometryAny: 'biometryAny';
+  readonly BiometryCurrentSet: 'biometryCurrentSet';
+  readonly BiometryAnyOrPasscode: 'biometryAnyOrPasscode';
+  readonly BiometryCurrentSetOrPasscode: 'biometryCurrentSetOrPasscode';
+  readonly Passcode: 'passcode';
+};
+
+type AccessControl = (typeof AccessControl)[keyof typeof AccessControl];
+```
+
+<Facts type="'none' | 'biometryAny' | 'biometryCurrentSet' | 'biometryAnyOrPasscode' | 'biometryCurrentSetOrPasscode' | 'passcode'" defaultValue="'none'" />
+
+## Values {#values}
+
+| Constant | String | Who unlocks the item | iOS | Android prompt |
+| --- | --- | --- | --- | --- |
+| `None` | `'none'` | Nobody: no prompt. The default | Only `kSecAttrAccessible` | — |
+| `BiometryAny` | `'biometryAny'` | Any enrolled biometrics, now or added later | `.biometryAny` | `BIOMETRIC_STRONG` |
+| `BiometryCurrentSet` | `'biometryCurrentSet'` | Only the biometrics enrolled when the item was written | `.biometryCurrentSet` | `BIOMETRIC_STRONG` |
+| `BiometryAnyOrPasscode` | `'biometryAnyOrPasscode'` | Biometrics or the device passcode | `.userPresence` | `BIOMETRIC_STRONG \| DEVICE_CREDENTIAL` |
+| `BiometryCurrentSetOrPasscode` | `'biometryCurrentSetOrPasscode'` | Today's biometrics or the device passcode | `.biometryCurrentSet, .or, .devicePasscode` | `BIOMETRIC_STRONG \| DEVICE_CREDENTIAL` |
+| `Passcode` | `'passcode'` | The device passcode, PIN or pattern | `.devicePasscode` | `DEVICE_CREDENTIAL` |
+
+- **`CurrentSet`.** A new fingerprint or face, or one removed, invalidates the item: the next read throws `KEY_INVALIDATED` and the item is removed. With `Any`, the item survives such changes. See [How biometrics works](/docs/fundamentals/biometrics#invalidation).
+- **Biometrics on Android** is Class 3 (strong), the only kind that can unlock a Keystore key. A phone whose face unlock is Class 2 offers only its fingerprint sensor to these items.
+- **The passcode on Android** needs Android 11 (API 30). Before it, the three values with a passcode are `unsupportedOS` for `canUseAccessControl`, and a write throws `UNSUPPORTED`.
+- **`authValidity`.** `BiometryCurrentSet` and `BiometryCurrentSetOrPasscode` can't have a window: `authValidity` above 0 with them is `INVALID_ARGUMENT`.
+- **iCloud.** An item with an `accessControl` other than `None` can't be `synchronizable` (`INVALID_ARGUMENT`).
+
+## What a write needs {#needs}
+
+A write of an item whose protection the device can't give fails; it never stores the item with less:
+
+| The device | `BiometryAny`, `BiometryCurrentSet` | `BiometryCurrentSetOrPasscode` | `BiometryAnyOrPasscode` | `Passcode` |
+| --- | --- | --- | --- | --- |
+| No biometric sensor | `BIOMETRY_NOT_AVAILABLE` | `BIOMETRY_NOT_AVAILABLE` | Written: the passcode opens it | Written |
+| No biometrics enrolled | `BIOMETRY_NOT_ENROLLED` | `BIOMETRY_NOT_ENROLLED`: the passcode doesn't make up for it | Written | Written |
+| No passcode | `PASSCODE_NOT_SET` | `PASSCODE_NOT_SET` | `PASSCODE_NOT_SET` | `PASSCODE_NOT_SET` |
+| Android 7–10 | Written | `UNSUPPORTED` | `UNSUPPORTED` | `UNSUPPORTED` |
+
+On iOS a biometric value (all but `None` and `Passcode`) also needs `NSFaceIDUsageDescription` in the app's Info.plist on a device with Face ID: without it the write, the read and `canUseAccessControl` fail with `MISSING_USAGE_DESCRIPTION`. [`canUseAccessControl`](/api/device/canUseAccessControl) answers all of this before a write.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'canUseAccessControl', text: 'Whether the device can give a value now, and why not.', to: '/api/device/canUseAccessControl' },
+    { name: 'Protection', text: 'How to choose a value.', to: '/docs/fundamentals/protection#access-control' },
+    { name: 'How biometrics works', text: 'The prompt, its outcomes, and invalidation.', to: '/docs/fundamentals/biometrics' },
+  ]}
+/>

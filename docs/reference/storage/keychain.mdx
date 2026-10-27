@@ -1,0 +1,84 @@
+---
+title: keychain
+description: 'The storage of the default service: the bundle identifier on iOS, the application id on Android, with the default protection. The place for secrets that need no prompt.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Object" importName="keychain" />
+
+`keychain` is a ready [`Keychain`](./methods): every method of a storage, over the items of the app's own service. Most apps start with it and add a [`createKeychain`](./createKeychain) storage only for items that need other protection, such as a vault behind Face ID.
+
+## Usage {#usage}
+
+```ts title="src/session.ts"
+import { keychain } from '@apexnative/keychain';
+
+export async function saveSession(accessToken: string) {
+  await keychain.setItem('accessToken', accessToken);
+}
+
+export function loadSession(): Promise<string | null> {
+  return keychain.getItem('accessToken'); // null when nothing is stored
+}
+
+export function signOut(): Promise<void> {
+  return keychain.removeItem('accessToken');
+}
+```
+
+The items are readable from the first unlock after a restart, in the background too, and no prompt guards them. Those are the defaults of every storage:
+
+| Option | Value of `keychain` |
+| --- | --- |
+| `service` | The bundle identifier on iOS (`com.example.app`), the application id on Android |
+| `accessible` | `'afterFirstUnlock'` |
+| `accessControl` | `'none'` |
+| `authValidity` | `0` |
+| `synchronizable` | `false` |
+| `accessGroup` | None: the app's default group on iOS |
+| `prompt` | None: the system's texts |
+| `android.keyStorage` | `'tee'` |
+
+A call can still protect one item more than the defaults, with its own [`SetOptions`](./types#setoptions):
+
+```ts
+import { AccessControl, keychain } from '@apexnative/keychain';
+
+await keychain.setItem('pin', pin, { accessControl: AccessControl.BiometryCurrentSetOrPasscode });
+```
+
+Then a read of `pin` shows the prompt, while the other items of `keychain` still don't. For several protected items, a storage of their own keeps the protection in one place: see [`createKeychain`](./createKeychain).
+
+## Signature {#signature}
+
+```ts
+const keychain: Keychain;
+```
+
+<Facts type="Keychain" prompt="Only reads of an item written with an `accessControl`" />
+
+`keychain.service` asks the native side for the app's identifier on first use and keeps it. Importing the package doesn't touch the native module, so the import works in tests, on the web and in Expo Go; there the first call, `keychain.service` included, throws `UNSUPPORTED` with a message that says what is missing.
+
+## The same as createKeychain() {#same}
+
+`keychain` is the storage `createKeychain()` makes without options. Two storages of one service see the same items:
+
+```ts
+import { createKeychain, keychain } from '@apexnative/keychain';
+
+const same = createKeychain({ service: keychain.service });
+await keychain.setItem('a', '1');
+await same.getItem('a'); // '1'
+```
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'Keychain', text: 'Every method of a storage, with examples.', to: '/api/storage/methods' },
+    { name: 'createKeychain', text: 'A storage with its own service and defaults.', to: '/api/storage/createKeychain' },
+    { name: 'Storage model', text: 'Services, keys, strings and bytes.', to: '/docs/fundamentals/storage-model' },
+  ]}
+/>

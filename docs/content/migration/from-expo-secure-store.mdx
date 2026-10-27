@@ -1,0 +1,95 @@
+---
+title: From expo-secure-store
+description: 'The same key/value model with more protection options: moving the items with one call, the API side by side, and the behavior that changes.'
+---
+
+`expo-secure-store` and this package share the model: a string per key, in a named service, with synchronous reads. The move is mostly renames, plus one call that moves the items already on the users' devices.
+
+## Move the data {#data}
+
+The package doesn't read Expo's items in place: it sees [only its own items](../fundamentals/storage-model#own-items), so `getItem` returns `null` for a key that `expo-secure-store` stored until the migration moves it. Run [`migrateFromExpoSecureStore`](/api/migrate/migrateFromExpoSecureStore) once at launch, before the first read:
+
+```ts title="src/storage/migrate.ts"
+import { migrateFromExpoSecureStore } from '@apexnative/keychain/migrate';
+
+const report = await migrateFromExpoSecureStore({ removeSource: true });
+// { migrated: ['accessToken', 'refreshToken'], skipped: [], warnings: [] }
+```
+
+- **Where from.** Without `keychainService`, Expo's default store: `app` on iOS, `key_v1` on Android. If the app passed its own `keychainService` to Expo, name it, or several: `keychainService: ['auth', 'settings']`.
+- **Where to.** Each item keeps its key, in the default storage, `keychain`, or in the storage `into` names. Nothing is overwritten: a key that is taken is skipped as `exists`.
+- **Protected items**, stored with `requireAuthentication`, come back in `skipped` as `requiresAuth`. Move each with [`migrateItem`](/api/migrate/migrateItem) when the app shows a prompt anyway:
+
+  ```ts
+  import { AccessControl } from '@apexnative/keychain';
+  import { migrateItem } from '@apexnative/keychain/migrate';
+
+  await migrateItem(
+    { library: 'expoSecureStore', key: 'refreshToken' },
+    { prompt: { title: 'Unlock your account' }, setOptions: { accessControl: AccessControl.BiometryCurrentSet }, removeSource: true }
+  );
+  ```
+
+- **Again is safe.** A moved item is gone (`removeSource: true`) or marked as moved, and a second run skips it.
+- **One library at a time.** With `removeSource`, run the migration before the app calls expo-secure-store in this launch, or once it is removed: the two libraries shouldn't work on the same items at once.
+
+| Platform | Where the migration reads |
+| --- | --- |
+| iOS | Expo's Keychain items of the service `<keychainService>:no-auth` and `<keychainService>:auth`, and `<keychainService>` of its first versions |
+| Android | Expo's SharedPreferences `SecureStore`, decrypted with its `aes` scheme and its Keystore keys. The `hybrid` scheme of Android 5 isn't read |
+
+## The API side by side {#api}
+
+| expo-secure-store | @apexnative/keychain |
+| --- | --- |
+| `setItemAsync(key, value, options)` | `setItem(key, value, options)` |
+| `getItemAsync(key, options)` | `getItem(key, options)` |
+| `deleteItemAsync(key, options)` | `removeItem(key)` |
+| `getItem(key)` (sync) | `getItemSync(key)`: never prompts; `AUTH_REQUIRED` for a protected item |
+| `setItem(key, value)` (sync) | `setItemSync(key, value)` |
+| `isAvailableAsync()` | Always available on iOS and Android; on the web every method throws `UNSUPPORTED` |
+| `canUseBiometricAuthentication()` | `canUseAccessControl(AccessControl.BiometryCurrentSet)`, with the reason when it can't |
+| — | `setBytes`, `getBytes`, `hasItem`, `getAllKeys`, `clear`, `getItemInfo`, credentials |
+
+| Option of expo-secure-store | Here |
+| --- | --- |
+| `keychainService` | `service` of `createKeychain` |
+| `requireAuthentication: true` | `accessControl: AccessControl.BiometryCurrentSet`, or any of the [six values](../fundamentals/protection#access-control) |
+| `authenticationPrompt` | `prompt.title` |
+| `keychainAccessible` (`WHEN_UNLOCKED` by default) | `accessible` (`afterFirstUnlock` by default) |
+| `accessGroup` | `accessGroup` |
+
+```ts
+// Before
+import * as SecureStore from 'expo-secure-store';
+await SecureStore.setItemAsync('refreshToken', token, {
+  keychainService: 'auth',
+  requireAuthentication: true,
+  authenticationPrompt: 'Unlock your account',
+});
+
+// After
+import { AccessControl, createKeychain } from '@apexnative/keychain';
+const auth = createKeychain({
+  service: 'auth',
+  accessControl: AccessControl.BiometryCurrentSet,
+  prompt: { title: 'Unlock your account' },
+});
+await auth.setItem('refreshToken', token);
+```
+
+**Keys and values.** Every Expo key stays valid: a key here is any non-empty string of up to 256 characters without U+0000. A string value can't hold U+0000 (`INVALID_ARGUMENT`): binary data kept in a string goes to `setBytes`.
+
+**The config plugin.** Replace `expo-secure-store` in the `plugins` of `app.json` with `@apexnative/keychain`; its [`faceIDPermission`](/api/plugin#faceIDPermission) has the same name. Android needs no backup rules: the package keeps its data out of backups on its own.
+
+## What behaves differently {#behavior}
+
+- **The default `accessible` is `afterFirstUnlock`.** Expo's default, `WHEN_UNLOCKED`, fails in the background. Pass `accessible: Accessible.WhenUnlocked` to keep Expo's behavior.
+- **Writes never prompt.** Expo's write with `requireAuthentication` shows the prompt on Android; here no write does.
+- **The sync API never prompts.** It throws `AUTH_REQUIRED` at once instead of blocking the JS thread.
+- **Changed biometrics is an error.** Expo returns `null` for an invalidated item; here it is `KEY_INVALIDATED`, so the app can tell the user to sign in again.
+- **Errors have codes.** Check `error.code === KeychainErrorCode.UserCanceled`, not `error.message`.
+- **Prompts queue.** A second read while a prompt is open waits for its turn instead of failing.
+- **More than one switch.** The passcode as a fallback, `biometryAny`, and a reuse window (`authValidity`) are options here.
+
+One thing stays the same: on Android only Class 3 biometrics can unlock a key, so on a phone whose face unlock is Class 2 only the fingerprint sensor is offered, as with Expo.

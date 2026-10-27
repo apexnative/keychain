@@ -1,0 +1,394 @@
+---
+title: Keychain
+description: 'The methods of a storage: strings and bytes, what can be known without a prompt, listing and clearing, the synchronous calls, and credentials. The default keychain and every storage of createKeychain have them all.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Interface" importName="type Keychain" />
+
+A `Keychain` is the items of one service. You don't make one with `new`: [`keychain`](./keychain) is the storage of the app's own service, and [`createKeychain`](./createKeychain) makes the others. The type is exported for the code that takes a storage as a parameter.
+
+## Usage {#usage}
+
+```ts title="src/vault.ts"
+import { AccessControl, createKeychain, type Keychain } from '@apexnative/keychain';
+
+export const vault = createKeychain({ service: 'vault', accessControl: AccessControl.BiometryCurrentSet });
+
+await vault.setItem('refreshToken', token, { label: 'ivan@example.com' }); // no prompt
+await vault.hasItem('refreshToken'); // true, no prompt
+await vault.getItemInfo('refreshToken'); // { label: 'ivan@example.com', … }, no prompt
+await vault.getItem('refreshToken'); // the prompt, then the value
+
+export async function signOut(store: Keychain) {
+  await store.clear(); // no prompt
+}
+```
+
+Every method checks its key and options in JavaScript first, the same way on both platforms, and fails with a [`KeychainError`](/api/errors/KeychainError): an async method rejects, a sync method throws. A key is a non-empty string of up to 256 characters (code points) without U+0000. A missing item is `null`, never an error. Only `getItem`, `getBytes` and `getCredentials` can show the system prompt.
+
+## Signature {#signature}
+
+```ts
+interface Keychain {
+  readonly service: string;
+
+  setItem(key: string, value: string, options?: SetOptions): Promise<void>;
+  getItem(key: string, options?: GetOptions): Promise<string | null>;
+  setBytes(key: string, value: Uint8Array, options?: SetOptions): Promise<void>;
+  getBytes(key: string, options?: GetOptions): Promise<Uint8Array | null>;
+  removeItem(key: string): Promise<void>;
+
+  hasItem(key: string): Promise<boolean>;
+  getItemInfo(key: string): Promise<ItemInfo | null>;
+  getAllKeys(): Promise<string[]>;
+  clear(): Promise<void>;
+
+  getItemSync(key: string): string | null;
+  setItemSync(key: string, value: string, options?: SetOptions): void;
+  hasItemSync(key: string): boolean;
+  removeItemSync(key: string): void;
+
+  setCredentials(
+    credentials: Credentials,
+    options?: Omit<SetOptions, 'label'> & CredentialsOptions
+  ): Promise<void>;
+  getCredentials(options?: GetOptions & CredentialsOptions): Promise<Credentials | null>;
+  removeCredentials(options?: CredentialsOptions): Promise<void>;
+}
+```
+
+A method without a value resolves to `undefined` on both platforms.
+
+## Values {#values-group}
+
+### `service` {#service}
+
+```ts
+readonly service: string;
+```
+
+The name of the storage: the `service` it was made with, or the app's identifier for [`keychain`](./keychain) and a storage made without one (the bundle identifier on iOS, the application id on Android). The default is asked from the native side on first use; without the native module, reading it throws `UNSUPPORTED`.
+
+### `setItem` {#setItem}
+
+```ts
+setItem(key: string, value: string, options?: SetOptions): Promise<void>;
+```
+
+<Facts returns="Promise<void>" prompt="Never, even for an item with an `accessControl`" throws="`INVALID_ARGUMENT`; when the device can't give the protection: `BIOMETRY_NOT_ENROLLED`, `BIOMETRY_NOT_AVAILABLE`, `PASSCODE_NOT_SET`, `UNSUPPORTED`, `MISSING_USAGE_DESCRIPTION`, `HARDWARE_UNAVAILABLE`; `MISSING_ENTITLEMENT`; `INTERACTION_NOT_ALLOWED`" />
+
+<Params
+  items={[
+    { name: 'key', type: 'string', required: true, text: 'The name of the item in the storage.' },
+    { name: 'value', type: 'string', required: true, text: 'Any text, the empty string too, without U+0000 and without a lone surrogate. Binary data goes through [`setBytes`](#setBytes).' },
+    { name: 'options', type: 'SetOptions', text: 'The protection of this item and its `label`, over the storage\'s defaults. See [SetOptions](./types#setoptions).' },
+  ]}
+/>
+
+Stores a string, kept as UTF-8, and replaces the item under the key: the value, the protection and the label together. The write is atomic: when the new item can't be stored, the old one stays.
+
+```ts
+import { AccessControl, keychain } from '@apexnative/keychain';
+
+await keychain.setItem('accessToken', token);
+await keychain.setItem('refreshToken', refreshToken, {
+  accessControl: AccessControl.BiometryCurrentSet,
+  label: 'ivan@example.com',
+});
+```
+
+- **The protection is never lowered.** When the device can't give the item its `accessControl`, the write fails with a code that says why, and nothing is stored with less: `BIOMETRY_NOT_ENROLLED` (also for `biometryCurrentSetOrPasscode`: the passcode doesn't make up for the missing biometrics), `BIOMETRY_NOT_AVAILABLE`, `PASSCODE_NOT_SET`, `UNSUPPORTED` (a passcode option, or `authValidity`, before Android 11), `MISSING_USAGE_DESCRIPTION` (iOS: a biometric option without `NSFaceIDUsageDescription`), `HARDWARE_UNAVAILABLE` (`strongboxRequired` without StrongBox).
+- **The label goes with every write.** A write without `label` removes the label the item had; `''` is a label.
+- **Only its own items.** On iOS an item of another library with the same service and key (react-native-keychain, expo-secure-store) isn't overwritten: the write fails with `INVALID_ARGUMENT`. Use another key, or move the old item with [`/migrate`](/api/migrate/migrateFromReactNativeKeychain) first.
+- **Locked device.** A write of a `whenUnlocked*` or `whenPasscodeSetThisDeviceOnly` item while the device is locked fails with `INTERACTION_NOT_ALLOWED`.
+
+### `getItem` {#getItem}
+
+```ts
+getItem(key: string, options?: GetOptions): Promise<string | null>;
+```
+
+<Facts returns="Promise<string | null>" prompt="When the item has an `accessControl`" throws="The prompt's codes (`USER_CANCELED`, `USER_FALLBACK`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT`); `KEY_INVALIDATED`; `INTERACTION_NOT_ALLOWED`; `NO_ACTIVITY`; `MISSING_USAGE_DESCRIPTION`; `INVALID_ARGUMENT`; `DATA_CORRUPTED`" />
+
+<Params
+  items={[
+    { name: 'key', type: 'string', required: true, text: 'The name of the item.' },
+    { name: 'options', type: 'GetOptions', text: 'The `prompt` of this read, merged field by field over the storage\'s. See [GetOptions](./types#getoptions).' },
+  ]}
+/>
+
+Reads a string, or `null` when there is no item under the key. A protected item shows the system prompt first: the value comes back after the user passes it, or the call rejects with the code of how the prompt ended.
+
+```ts
+import { KeychainErrorCode, isKeychainError } from '@apexnative/keychain';
+
+try {
+  const token = await vault.getItem('refreshToken', { prompt: { title: 'Sign in to Example' } });
+  if (token === null) showSignIn(); // never stored, or removed
+} catch (error) {
+  if (isKeychainError(error, KeychainErrorCode.KeyInvalidated)) signInAgain();
+  else if (isKeychainError(error, KeychainErrorCode.UserCanceled)) showPasswordForm();
+  else throw error;
+}
+```
+
+- **`null` means nothing is stored.** An item that is there but can't be read is an error: `KEY_INVALIDATED` when the enrolled biometrics changed since a `biometryCurrentSet*` write (the item is removed), `INTERACTION_NOT_ALLOWED` for a `whenUnlocked*` item while the device is locked.
+- **Bytes as text.** An item written with `setBytes` whose bytes aren't UTF-8 text fails with `INVALID_ARGUMENT`: read it with [`getBytes`](#getBytes).
+- **Several reads.** Prompts come one at a time, in the order the reads asked. Two reads of protected items show two prompts, unless the item has an [`authValidity`](/api/options/KeychainOptions#auth-validity) window.
+- **Android** needs an activity for the prompt: `NO_ACTIVITY` without one.
+
+### `setBytes` {#setBytes}
+
+```ts
+setBytes(key: string, value: Uint8Array, options?: SetOptions): Promise<void>;
+```
+
+<Facts returns="Promise<void>" prompt="Never" throws="As [`setItem`](#setItem)" />
+
+<Params
+  items={[
+    { name: 'key', type: 'string', required: true, text: 'The name of the item.' },
+    { name: 'value', type: 'Uint8Array', required: true, text: 'Any bytes, zeros included, and an empty array.' },
+    { name: 'options', type: 'SetOptions', text: 'As for [`setItem`](#setItem).' },
+  ]}
+/>
+
+Stores bytes as they are: an encryption key, a certificate, data that isn't text. They travel to the native side in Base64 and are kept as bytes, so nothing is lost on the way. Everything else is as `setItem`: the same options, the same errors, the same replacing of the item.
+
+```ts
+const key = crypto.getRandomValues(new Uint8Array(32));
+await keys.setBytes('database', key);
+```
+
+### `getBytes` {#getBytes}
+
+```ts
+getBytes(key: string, options?: GetOptions): Promise<Uint8Array | null>;
+```
+
+<Facts returns="Promise<Uint8Array | null>" prompt="When the item has an `accessControl`" throws="As [`getItem`](#getItem)" />
+
+Reads bytes, or `null`. It reads any item: one written with `setItem` comes back as the UTF-8 bytes of its string.
+
+```ts
+const key = await keys.getBytes('database'); // Uint8Array | null
+```
+
+### `removeItem` {#removeItem}
+
+```ts
+removeItem(key: string): Promise<void>;
+```
+
+<Facts returns="Promise<void>" prompt="Never, even for an item with an `accessControl`" throws="`INVALID_ARGUMENT` for a key that isn't valid" />
+
+Deletes the item. A key with no item is no error. On iOS an item of another library under the same key stays: the package removes only its own.
+
+```ts
+await keychain.removeItem('accessToken');
+```
+
+## Without a prompt {#info-group}
+
+These methods read what is stored about the items, never their values, and never show a prompt, whatever protects the items.
+
+### `hasItem` {#hasItem}
+
+```ts
+hasItem(key: string): Promise<boolean>;
+```
+
+<Facts returns="Promise<boolean>" prompt="Never" throws="`INVALID_ARGUMENT` for a key that isn't valid" />
+
+Whether there is an item under the key. Use it to choose between the sign-in screen and the Face ID screen without bothering the user:
+
+```ts
+if (await vault.hasItem('refreshToken')) showUnlockWithFaceId();
+else showSignIn();
+```
+
+### `getItemInfo` {#getItemInfo}
+
+```ts
+getItemInfo(key: string): Promise<ItemInfo | null>;
+```
+
+<Facts returns="Promise<ItemInfo | null>" prompt="Never" throws="`INVALID_ARGUMENT` for a key that isn't valid" />
+
+What the item is and how it is protected, or `null` when there is no item: its key, its label, its `accessible` and `accessControl`, whether it is in iCloud Keychain, when it was written, and on Android where its key lives. See [ItemInfo](./types#iteminfo).
+
+```ts
+const info = await vault.getItemInfo('refreshToken');
+// {
+//   key: 'refreshToken',
+//   label: 'ivan@example.com',
+//   accessible: 'whenUnlockedThisDeviceOnly',
+//   accessControl: 'biometryCurrentSet',
+//   synchronizable: false,
+//   createdAt: 1730000000000,
+//   modifiedAt: 1730000000000,
+//   android: { securityLevel: 'tee' }, // Android only
+// }
+if (info) showContinueAs(info.label);
+```
+
+The label is the one thing an app may show before the prompt: "Continue as ivan@example.com".
+
+### `getAllKeys` {#getAllKeys}
+
+```ts
+getAllKeys(): Promise<string[]>;
+```
+
+<Facts returns="Promise<string[]>" prompt="Never" />
+
+The keys of every item of the storage, sorted. Only the package's own items: on iOS the items of other libraries under the same service aren't listed. Credentials are listed under their keys, `credentials` and `credentials:<server>`.
+
+```ts
+await vault.getAllKeys(); // ['credentials', 'pin', 'refreshToken']
+```
+
+### `clear` {#clear}
+
+```ts
+clear(): Promise<void>;
+```
+
+<Facts returns="Promise<void>" prompt="Never, even for items with an `accessControl`" />
+
+Deletes every item of the storage and, on Android, the Keystore keys of its service. The other storages keep their items, and on iOS so do the items of other libraries under the same service.
+
+```ts
+export async function signOut() {
+  await vault.clear();
+}
+```
+
+## Synchronous {#sync-group}
+
+The synchronous methods run on the JavaScript thread, for values needed before the first render. They never show a prompt. A sync call runs after the async calls made before it, so it sees a write that wasn't awaited; the JavaScript thread waits for that work, never for a user. A failure is thrown as the same `KeychainError`. See [Synchronous API](/docs/fundamentals/sync-api#order).
+
+### `getItemSync` {#getItemSync}
+
+```ts
+getItemSync(key: string): string | null;
+```
+
+<Facts returns="string | null" prompt="Never" throws="`AUTH_REQUIRED` for an item with an `accessControl`; `INTERACTION_NOT_ALLOWED`; `INVALID_ARGUMENT`; `DATA_CORRUPTED`" />
+
+Reads a string, or `null`. An item that needs a prompt throws `AUTH_REQUIRED` at once, instead of stopping the JavaScript thread while the user looks at the phone: read it with [`getItem`](#getItem).
+
+```tsx title="App.tsx"
+// Read once, when the module loads: no promise and no loading state.
+const initialToken = keychain.getItemSync('accessToken');
+```
+
+### `setItemSync` {#setItemSync}
+
+```ts
+setItemSync(key: string, value: string, options?: SetOptions): void;
+```
+
+<Facts returns="void" prompt="Never" throws="As [`setItem`](#setItem)" />
+
+Writes a string, as [`setItem`](#setItem) does, with the same options and errors.
+
+```ts
+keychain.setItemSync('lastEnvironment', 'staging');
+```
+
+### `hasItemSync` {#hasItemSync}
+
+```ts
+hasItemSync(key: string): boolean;
+```
+
+<Facts returns="boolean" prompt="Never" throws="`INVALID_ARGUMENT` for a key that isn't valid" />
+
+Whether there is an item under the key.
+
+### `removeItemSync` {#removeItemSync}
+
+```ts
+removeItemSync(key: string): void;
+```
+
+<Facts returns="void" prompt="Never" throws="`INVALID_ARGUMENT` for a key that isn't valid" />
+
+Deletes the item; a key with no item is no error.
+
+## Credentials {#credentials-group}
+
+A username and a password, kept as one item: the password is the value, the username its label. `getItemInfo` shows the username without a prompt. See [Credentials](/docs/fundamentals/storage-model#credentials).
+
+### `setCredentials` {#setCredentials}
+
+```ts
+setCredentials(
+  credentials: Credentials,
+  options?: Omit<SetOptions, 'label'> & CredentialsOptions
+): Promise<void>;
+```
+
+<Facts returns="Promise<void>" prompt="Never" throws="As [`setItem`](#setItem); `INVALID_ARGUMENT` for an empty username or a `label` option" />
+
+<Params
+  items={[
+    { name: 'credentials', type: 'Credentials', required: true, text: '`{ username, password }`. The username can\'t be empty; the password can. Neither can hold U+0000.' },
+    { name: 'options', type: 'SetOptions & CredentialsOptions', text: 'The protection of the item, without `label` (the label is the username), and the `server` the credentials are for.' },
+  ]}
+/>
+
+Writes the credentials under the key `credentials`, or `credentials:<server>` with a `server`. One storage keeps one pair per server and one of the app's own.
+
+```ts
+await vault.setCredentials(
+  { username: 'ivan@example.com', password },
+  { accessControl: AccessControl.BiometryCurrentSet }
+);
+await vault.setCredentials({ username, password }, { server: 'api.example.com' });
+```
+
+The keys are ordinary keys of the storage: `setItem('credentials', …)` would replace the app's own pair. `credentials:<server>` must fit the rules of a key: up to 256 characters with the prefix.
+
+### `getCredentials` {#getCredentials}
+
+```ts
+getCredentials(options?: GetOptions & CredentialsOptions): Promise<Credentials | null>;
+```
+
+<Facts returns="Promise<Credentials | null>" prompt="When the item has an `accessControl`" throws="As [`getItem`](#getItem); `INVALID_ARGUMENT` for an item that has no label" />
+
+Reads the credentials of the app, or of the `server`, or `null`. An item under that key that wasn't written by `setCredentials`, and so has no label, fails with `INVALID_ARGUMENT` rather than make up a username.
+
+```ts
+const credentials = await vault.getCredentials(); // { username, password } | null
+const api = await vault.getCredentials({ server: 'api.example.com', prompt: { title: 'Sign in' } });
+```
+
+### `removeCredentials` {#removeCredentials}
+
+```ts
+removeCredentials(options?: CredentialsOptions): Promise<void>;
+```
+
+<Facts returns="Promise<void>" prompt="Never" throws="`INVALID_ARGUMENT` for a `server` that isn't valid" />
+
+Deletes the credentials of the app, or of the `server`. Missing credentials are no error.
+
+```ts
+await vault.removeCredentials({ server: 'api.example.com' });
+```
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'SetOptions, GetOptions, ItemInfo', text: 'The types the methods take and return.', to: '/api/storage/types' },
+    { name: 'Storage model', text: 'Services, values, labels and credentials, explained.', to: '/docs/fundamentals/storage-model' },
+    { name: 'Error codes', text: 'Every code a method can fail with, and what to do.', to: '/docs/help/error-codes' },
+  ]}
+/>

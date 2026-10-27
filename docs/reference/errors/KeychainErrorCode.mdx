@@ -1,0 +1,108 @@
+---
+title: KeychainErrorCode
+description: 'Why a call failed: twenty codes, the same on iOS and Android. A constant object and a type of the same name: KeychainErrorCode.KeyInvalidated is the string KEY_INVALIDATED.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Constants" importName="KeychainErrorCode" />
+
+The `code` of a [`KeychainError`](./KeychainError). Each constant is its string, so `error.code === KeychainErrorCode.KeyInvalidated` and `error.code === 'KEY_INVALIDATED'` are the same check, and a `switch` over the constants is checked by TypeScript.
+
+## Usage {#usage}
+
+```ts
+import { KeychainError, KeychainErrorCode } from '@apexnative/keychain';
+
+function message(error: KeychainError): string | null {
+  switch (error.code) {
+    case KeychainErrorCode.UserCanceled:
+    case KeychainErrorCode.SystemCanceled:
+      return null;
+    case KeychainErrorCode.Lockout:
+      return 'Too many attempts. Try again in a moment.';
+    case KeychainErrorCode.KeyInvalidated:
+      return 'Face ID changed on this device. Sign in again.';
+    default:
+      return 'Something went wrong.';
+  }
+}
+```
+
+## Signature {#signature}
+
+```ts
+const KeychainErrorCode: {
+  readonly UserCanceled: 'USER_CANCELED';
+  readonly UserFallback: 'USER_FALLBACK';
+  // … one member for each code below
+  readonly Unknown: 'UNKNOWN';
+};
+
+type KeychainErrorCode = (typeof KeychainErrorCode)[keyof typeof KeychainErrorCode];
+```
+
+<Facts type="'USER_CANCELED' | 'USER_FALLBACK' | … | 'UNKNOWN'" />
+
+## Codes {#codes}
+
+### The prompt {#prompt}
+
+| Constant | String | When |
+| --- | --- | --- |
+| `UserCanceled` | [`USER_CANCELED`](/docs/help/error-codes#user-canceled) | The user canceled the prompt. On Android 16, also a prompt that was open when the app went to the background: Android reports it as the user's cancel |
+| `UserFallback` | [`USER_FALLBACK`](/docs/help/error-codes#user-fallback) | iOS: the user tapped the fallback button of a prompt for biometrics alone (`biometryAny`, `biometryCurrentSet`). `prompt.fallback: ''` hides the button |
+| `SystemCanceled` | [`SYSTEM_CANCELED`](/docs/help/error-codes#system-canceled) | The system closed the prompt: the app went to the background, a call came in |
+| `AuthFailed` | [`AUTH_FAILED`](/docs/help/error-codes#auth-failed) | iOS: the face or the finger wasn't recognized |
+| `Lockout` | [`LOCKOUT`](/docs/help/error-codes#lockout) | Too many failed attempts: the biometrics is locked for a while |
+| `LockoutPermanent` | [`LOCKOUT_PERMANENT`](/docs/help/error-codes#lockout-permanent) | Android: the biometrics is locked until the user enters the passcode |
+
+### The device {#device}
+
+| Constant | String | When |
+| --- | --- | --- |
+| `BiometryNotEnrolled` | [`BIOMETRY_NOT_ENROLLED`](/docs/help/error-codes#biometry-not-enrolled) | A write that needs enrolled biometrics, on a device without |
+| `BiometryNotAvailable` | [`BIOMETRY_NOT_AVAILABLE`](/docs/help/error-codes#biometry-not-available) | A write that needs biometrics, on a device without a sensor, or with one that is unavailable |
+| `PasscodeNotSet` | [`PASSCODE_NOT_SET`](/docs/help/error-codes#passcode-not-set) | A write that needs a passcode, PIN or pattern, on a device without |
+| `HardwareUnavailable` | [`HARDWARE_UNAVAILABLE`](/docs/help/error-codes#hardware-unavailable) | Android: `strongboxRequired` on a device without StrongBox |
+| `Unsupported` | [`UNSUPPORTED`](/docs/help/error-codes#unsupported) | The option needs a newer OS (the passcode or `authValidity` before Android 11), the platform has no keychain (the web), or the native module isn't in the app (Expo Go) |
+
+### The item {#item}
+
+| Constant | String | When |
+| --- | --- | --- |
+| `KeyInvalidated` | [`KEY_INVALIDATED`](/docs/help/error-codes#key-invalidated) | The enrolled biometrics changed since a `biometryCurrentSet*` item was written: the item was removed. Sign the user in again |
+| `DataCorrupted` | [`DATA_CORRUPTED`](/docs/help/error-codes#data-corrupted) | The stored value can't be decrypted or decoded, and not because the key was invalidated |
+
+### Not now {#not-now}
+
+| Constant | String | When |
+| --- | --- | --- |
+| `InteractionNotAllowed` | [`INTERACTION_NOT_ALLOWED`](/docs/help/error-codes#interaction-not-allowed) | The device is locked, or the app is in the background, and the item is `whenUnlocked*` |
+| `AuthRequired` | [`AUTH_REQUIRED`](/docs/help/error-codes#auth-required) | A synchronous read of an item that needs a prompt |
+| `NoActivity` | [`NO_ACTIVITY`](/docs/help/error-codes#no-activity) | Android: no activity to show the prompt in |
+
+### The app's setup {#setup}
+
+| Constant | String | When |
+| --- | --- | --- |
+| `MissingEntitlement` | [`MISSING_ENTITLEMENT`](/docs/help/error-codes#missing-entitlement) | iOS: an `accessGroup` the app has no entitlement for |
+| `MissingUsageDescription` | [`MISSING_USAGE_DESCRIPTION`](/docs/help/error-codes#missing-usage-description) | iOS: `NSFaceIDUsageDescription` is missing from Info.plist, on a device with Face ID; for a biometric item's write and read, and for `canUseAccessControl` |
+| `InvalidArgument` | [`INVALID_ARGUMENT`](/docs/help/error-codes#invalid-argument) | A key, a value or options that aren't valid; bytes read as text that aren't UTF-8; on iOS, a key held by another library's item |
+
+### Anything else {#other}
+
+| Constant | String | When |
+| --- | --- | --- |
+| `Unknown` | [`UNKNOWN`](/docs/help/error-codes#unknown) | A failure the package has no code for; `nativeCode` and `nativeDomain` say more |
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'Error codes', text: 'Every code: the native error behind it, and what to do.', to: '/docs/help/error-codes' },
+    { name: 'KeychainError', text: 'The error that carries the code.', to: '/api/errors/KeychainError' },
+    { name: 'Errors', text: 'The codes by kind, and handling a read.', to: '/docs/fundamentals/errors' },
+  ]}
+/>

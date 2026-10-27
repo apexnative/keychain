@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation 📖
+    url: https://keychain.apexnative.dev
+    about: The guides, the security model and the API reference. To report a vulnerability, see SECURITY.md instead of opening an issue.

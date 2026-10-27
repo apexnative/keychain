@@ -1,0 +1,58 @@
+---
+title: Threat model
+description: 'What the package protects against and what it does not: data at rest, other apps, a stolen phone, backups; and root, jailbreak, process memory and key names.'
+---
+
+import { Fit } from '@site/src/components/Intro';
+
+The package puts secrets under the protection the operating system gives its own: the iOS Keychain, and keys of the Android Keystore in the TEE or StrongBox. This page says what that protection covers, so you can choose the options of an item and know what is left to your app.
+
+## What it protects against {#protects}
+
+<Fit
+  yesLabel="Protected"
+  noLabel="Not protected"
+  yes={[
+    <><strong>Reading the data at rest.</strong> Values are encrypted by keys that never leave the Secure Enclave or the TEE; a copy of the app's files doesn't decrypt.</>,
+    <><strong>Other apps.</strong> The sandbox and the Keychain's access rules keep other apps out; only apps of your team, through an <code>accessGroup</code>, share items.</>,
+    <><strong>A locked, stolen phone.</strong> <code>whenUnlocked*</code> items can't be read while the phone is locked; after a restart, no item can be read before the first unlock.</>,
+    <><strong>A changed app on a compromised device, for items behind biometrics.</strong> The key opens only after the user passes the prompt, inside the hardware; there is no answer in JavaScript to patch.</>,
+    <><strong>Backups.</strong> On Android the data is kept out of backups; on iOS, <code>*ThisDeviceOnly</code> items never move to another device.</>,
+    <><strong>Moving a ciphertext.</strong> On Android each ciphertext is bound to its service and key: put under another key, it fails to decrypt (<code>DATA_CORRUPTED</code>).</>,
+  ]}
+  no={[
+    <><strong>Root and jailbreak, for items without <code>accessControl</code>.</strong> Code running as your app can call the same API your app calls and read every item it can read.</>,
+    <><strong>Process memory.</strong> A value read into JavaScript is a string in the JS heap, and the app can't wipe it. Read secrets when you need them; don't keep them in long-lived state.</>,
+    <><strong>Key names and labels.</strong> They are readable without a prompt by design; on Android they are in the clear in the app's sandbox.</>,
+    <><strong>Someone who knows the passcode,</strong> for items whose <code>accessControl</code> accepts it, and for every item on an unlocked phone in their hands.</>,
+    <><strong>What your app does with a value:</strong> logs, crash reports, analytics, screenshots of a screen that shows it.</>,
+    <><strong>The server side:</strong> a stolen refresh token is revoked by your backend, not by the keychain.</>,
+  ]}
+/>
+
+## Choose protection by what the value can do {#choose}
+
+| Value | Suggested options | Why |
+| --- | --- | --- |
+| A short-lived access token | `afterFirstUnlock`, no `accessControl` | Background requests read it; it expires anyway |
+| A refresh token, a session secret | `whenUnlockedThisDeviceOnly`, `biometryCurrentSet` | It can make new sessions: it should need the user |
+| The key of a local database | `afterFirstUnlockThisDeviceOnly`, no `accessControl` | The app opens the database at launch and in the background |
+| A password for "Sign in as …" | `biometryCurrentSetOrPasscode`, the username as a `label` | The name shows without a prompt; the password needs the user |
+| A setting that follows the user | `afterFirstUnlock`, `synchronizable: true` | iCloud Keychain moves it; nothing device-bound |
+
+`biometryCurrentSet` is stronger than `biometryAny`: it also stops someone who knows the passcode from enrolling their own face. The `…OrPasscode` options are kinder to people whose biometrics fails often, and as strong as the passcode.
+
+## Root and jailbreak {#root}
+
+On a rooted or jailbroken device the operating system's guarantees are weaker, and an attacker can run code inside your app. That code can call the package's API like your own code does. What still holds:
+
+- items behind biometrics or the passcode need the user, because the check and the key are in hardware;
+- keys in the TEE or StrongBox can't be copied off the device, even when the files can.
+
+Jailbreak and root detection are outside this package; if your app needs them, use a library made for them, and remember that detection can be bypassed too.
+
+## Out of scope {#scope}
+
+The package stores secrets. It isn't a cryptography library: signing, keys created in the Secure Enclave, and passkeys belong to a separate package. Password AutoFill and shared web credentials belong to AuthenticationServices and Credential Manager.
+
+How the protection is built on each platform: [On iOS](./ios), [On Android](./android).

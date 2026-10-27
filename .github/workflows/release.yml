@@ -1,0 +1,115 @@
+name: Release
+on:
+  push:
+    branches:
+      - main
+  # By hand: publishes a release tag that already exists, when the push run failed after tagging and skipped the
+  # publication. release-please doesn't run; the tag's package.json must carry the tag's version.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to publish, such as v1.0.0-rc.1
+        required: true
+        type: string
+
+# A release is a pull request: after every merge into main, release-please keeps one open with the next version and
+# the changelog from the conventional commits since the last release. Merging it tags the version, makes the GitHub
+# release and publishes the package to npm, once the maintainer approves the npm environment. npm trusts this
+# workflow (trusted publishing): no npm token, and every version carries its provenance.
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+
+    steps:
+      # The release app's token, not GITHUB_TOKEN: CI runs on the release pull request only when an app opens it, and
+      # the app may create the v* tags the tag rules keep for releases.
+      - name: Token of the release app
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Release pull request, tag and GitHub release
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    # By hand release-please is skipped, which would skip this job too without the status check of its own.
+    if: >-
+      !cancelled() &&
+      (github.event_name == 'workflow_dispatch' || needs.release-please.outputs.release_created == 'true')
+    runs-on: ubuntu-latest
+    environment: npm
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check the tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$TAG" != v* ]]; then
+            echo "::error::'$TAG' is not a release tag: release tags start with v, such as v1.0.0-rc.1."
+            exit 1
+          fi
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --silent 2>/dev/null; then
+            echo "::error::The tag '$TAG' doesn't exist in $GITHUB_REPOSITORY."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || needs.release-please.outputs.tag_name }}
+
+      - name: Check the version
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          VERSION=$(jq -r .version package.json)
+          if [ "$VERSION" != "${TAG#v}" ]; then
+            echo "::error::package.json at $TAG has the version $VERSION, not ${TAG#v}."
+            exit 1
+          fi
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      # Trusted publishing needs npm 11.5.1 or later, and a dist-tag through it 11.21.0; Node 22.14 comes with npm 10.
+      - name: npm for trusted publishing
+        run: npm install --global npm@^11.21.0
+
+      # A pre-release goes out under its stage (alpha, beta, rc). Until the first stable release `latest` follows the
+      # newest pre-release too, so a plain `npm install` never takes an old one; after it, `latest` is the stable.
+      - name: Publish to npm
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          TAG=$(node -p "(/-(alpha|beta|rc)\b/.exec('$VERSION') || [, 'latest'])[1]")
+          npm publish --tag "$TAG"
+          LATEST=$(npm view "$NAME@latest" version 2>/dev/null || true)
+          if [ "$TAG" != latest ] && { [ -z "$LATEST" ] || [[ "$LATEST" == *-* ]]; }; then
+            npm dist-tag add "$NAME@$VERSION" latest
+          fi

@@ -1,0 +1,95 @@
+// The library's Android module: Kotlin, with React Native's codegen of the TurboModule (`ApexKeychainSpec`, from
+// src/native/NativeApexKeychain.ts). -PapexKeychainWarningsAsErrors (scripts/build-android.sh) fails the build of this
+// module on a Kotlin or Java warning.
+buildscript {
+    // The Kotlin of the app, or this one: an app that has its Kotlin plugin on the classpath keeps it.
+    def kotlinVersion = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : "2.1.20"
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+    }
+}
+
+apply plugin: "com.android.library"
+// AGP 9 compiles Kotlin itself unless the app opts out (`android.builtInKotlin=false`, as React Native's template does).
+def agpMajor = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize(".")[0].toInteger()
+// Not an Elvis: Groovy's `false ?: true` is true, which would read `android.builtInKotlin=false` as true.
+def builtInKotlinProperty = providers.gradleProperty("android.builtInKotlin").orNull
+def builtInKotlin = agpMajor >= 9 && (builtInKotlinProperty == null || builtInKotlinProperty.toBoolean())
+if (!builtInKotlin) {
+    apply plugin: "org.jetbrains.kotlin.android"
+}
+apply plugin: "com.facebook.react"
+
+def appValue(name, fallback) {
+    return rootProject.ext.has(name) ? rootProject.ext.get(name) : fallback
+}
+
+def warningsAsErrors = project.hasProperty("apexKeychainWarningsAsErrors")
+
+react {
+    libraryName = "ApexKeychainSpec"
+    codegenJavaPackageName = "dev.apexnative.keychain"
+    jsRootDir = file("../src/native")
+}
+
+android {
+    namespace "dev.apexnative.keychain"
+    compileSdk Math.max(appValue("compileSdkVersion", 36) as int, 36)
+
+    defaultConfig {
+        minSdk Math.max(appValue("minSdkVersion", 24) as int, 24)
+        // The instrumented tests (src/androidTest): the storage on a device, since only a device has AndroidKeyStore.
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        allWarningsAsErrors = warningsAsErrors
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    if (warningsAsErrors) {
+        options.compilerArgs += ["-Xlint:unchecked", "-Xlint:deprecation", "-Werror"]
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    // The version of react-native comes from the app, through the React Native Gradle plugin.
+    implementation "com.facebook.react:react-android"
+    // The prompt of protected reads (`BiometricPrompt`, `BiometricManager`). 1.1.0 is the latest stable release; the
+    // later ones are alphas.
+    implementation "androidx.biometric:biometric:1.1.0"
+
+    // The JVM tests (src/test): the file's format and the values' encodings. Android's org.json is a stub there.
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.json:json:20250517"
+
+    androidTestImplementation "androidx.test:runner:1.7.0"
+    androidTestImplementation "androidx.test.ext:junit:1.3.0"
+    // The prompt's tests play the person at the emulator: the prompt's buttons, the PIN, Settings.
+    androidTestImplementation "androidx.test.uiautomator:uiautomator:2.4.0"
+    // The tests of the migration write react-native-keychain's DataStore with DataStore itself; the library reads the
+    // file without it.
+    androidTestImplementation "androidx.datastore:datastore-preferences:1.1.7"
+}

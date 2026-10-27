@@ -1,0 +1,54 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "example-metro",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": [
+        "example",
+        "start",
+        "--port",
+        "8081"
+      ],
+      "port": 8081
+    },
+    {
+      "name": "example-metro-clean",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": [
+        "example",
+        "start",
+        "--port",
+        "8081",
+        "--reset-cache"
+      ],
+      "port": 8081
+    },
+    {
+      "name": "docs",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": [
+        "--cwd",
+        "docs",
+        "start",
+        "--port",
+        "3000",
+        "--no-open"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "docs-build",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": [
+        "--cwd",
+        "docs",
+        "serve",
+        "--port",
+        "3002",
+        "--no-open"
+      ],
+      "port": 3002
+    }
+  ]
+}

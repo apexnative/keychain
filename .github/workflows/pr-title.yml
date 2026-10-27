@@ -1,0 +1,32 @@
+name: PR title
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  merge_group:
+    types:
+      - checks_requested
+
+# A pull request is squashed into one commit named by its title, and the release notes are made from those commits:
+# the title must be a conventional commit (the same commitlint rules as the commit-msg hook). In the merge queue the
+# title was checked already, so the job passes there without steps.
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Setup
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/setup
+
+      - name: Check the title
+        if: github.event_name == 'pull_request'
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: echo "$TITLE" | yarn commitlint

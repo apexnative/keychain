@@ -1,0 +1,97 @@
+---
+title: KeychainError
+description: 'The error of every failed call of the package. Its code says why, in the same words on iOS and Android; the native code and domain are there for logs.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Class" importName="KeychainError" />
+
+Every method of the package fails with a `KeychainError`: an async one rejects with it, a sync one throws it. Whatever the native side reports, an `OSStatus`, an `LAError` or a `BiometricPrompt` code, comes to JavaScript as one of the [codes](./KeychainErrorCode), so one `switch` handles both platforms. A missing item is not an error: it is `null`.
+
+## Usage {#usage}
+
+```ts
+import { KeychainError, KeychainErrorCode } from '@apexnative/keychain';
+
+try {
+  return await vault.getItem('refreshToken');
+} catch (error) {
+  if (!(error instanceof KeychainError)) throw error;
+  switch (error.code) {
+    case KeychainErrorCode.UserCanceled:
+      return showPasswordForm();
+    case KeychainErrorCode.KeyInvalidated:
+      return signInAgain();
+    default:
+      log(error.code, error.nativeCode, error.nativeDomain, error.message);
+      throw error;
+  }
+}
+```
+
+## Signature {#signature}
+
+```ts
+class KeychainError extends Error {
+  readonly code: KeychainErrorCode;
+  readonly nativeCode?: number;
+  readonly nativeDomain?: string;
+
+  constructor(code: KeychainErrorCode, message: string, details?: KeychainErrorDetails);
+}
+```
+
+<Facts type="class extends Error" />
+
+### Properties {#properties}
+
+<Params
+  label="Property"
+  items={[
+    { name: 'code', type: 'KeychainErrorCode', required: true, text: 'Why the call failed. See [KeychainErrorCode](./KeychainErrorCode).' },
+    { name: 'message', type: 'string', required: true, text: 'What happened, in English, for logs and for the developer: it names the key, the option or the missing setting. Not meant for the user.' },
+    { name: 'nativeCode', type: 'number', text: 'The native error behind the code, when there is one: an iOS `OSStatus` or `LAError`, an Android `BiometricPrompt` error code.' },
+    { name: 'nativeDomain', type: 'string', text: 'Where `nativeCode` comes from, such as `NSOSStatusErrorDomain` or `com.apple.LocalAuthentication`.' },
+    { name: 'cause', type: 'unknown', text: 'The error this one was made from, such as the rejection of the native call. Not enumerable.' },
+  ]}
+/>
+
+`name` is `'KeychainError'`, and `instanceof KeychainError` holds however the code was compiled. [`isKeychainError`](./isKeychainError) checks the class and a code in one call.
+
+### Constructor {#constructor}
+
+<Params
+  items={[
+    { name: 'code', type: 'KeychainErrorCode', required: true, text: 'The code.' },
+    { name: 'message', type: 'string', required: true, text: 'The message.' },
+    { name: 'details', type: 'KeychainErrorDetails', text: '`nativeCode`, `nativeDomain` and `cause`. See [KeychainErrorDetails](./types#keychainerrordetails).' },
+  ]}
+/>
+
+The package makes its errors itself; an app makes one in tests and in its own wrappers, to fail the way the package does:
+
+```ts
+import { KeychainError, KeychainErrorCode } from '@apexnative/keychain';
+
+const canceled = new KeychainError(KeychainErrorCode.UserCanceled, 'The user canceled the prompt.');
+```
+
+## What becomes a KeychainError {#mapping}
+
+- **A check in JavaScript** — a key, a value or an option that isn't valid — is `INVALID_ARGUMENT`, thrown before the native call.
+- **A native failure** comes with its code. A code the package doesn't know becomes `UNKNOWN`, with the native code and domain kept.
+- **No native module** — Expo Go, the web, an app not rebuilt after the install — is `UNSUPPORTED`, with a message that says how to fix it.
+
+[Error codes](/docs/help/error-codes) has every code: when it happens, the native error behind it, and what to do.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'KeychainErrorCode', text: 'Every code, as constants and strings.', to: '/api/errors/KeychainErrorCode' },
+    { name: 'isKeychainError', text: 'The check, with or without a code.', to: '/api/errors/isKeychainError' },
+    { name: 'Errors', text: 'The codes by kind, and handling a read.', to: '/docs/fundamentals/errors' },
+  ]}
+/>

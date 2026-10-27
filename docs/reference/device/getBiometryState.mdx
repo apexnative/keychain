@@ -1,0 +1,61 @@
+---
+title: getBiometryState
+description: 'An opaque token that changes when the enrolled biometrics change, or null without enrolled biometrics. Keep it to notice a new face or finger before a read throws KEY_INVALIDATED.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="getBiometryState" />
+
+An item written with `biometryCurrentSet` or `biometryCurrentSetOrPasscode` belongs to the biometrics enrolled when it was written: after a change, its next read throws `KEY_INVALIDATED` and the item is removed. The token tells the app about the change before that read, so it can say why the user has to sign in again, or skip a prompt that can only fail.
+
+## Usage {#usage}
+
+```ts title="src/auth/biometryChange.ts"
+import { createKeychain, getBiometryState } from '@apexnative/keychain';
+
+const settings = createKeychain({ service: 'settings' });
+
+// After enabling Face ID sign-in.
+export async function rememberBiometry() {
+  const state = await getBiometryState();
+  if (state) await settings.setItem('biometryState', state);
+}
+
+// At launch, before the Face ID screen.
+export async function biometryChanged(): Promise<boolean> {
+  const [saved, current] = await Promise.all([settings.getItem('biometryState'), getBiometryState()]);
+  return saved !== null && current !== null && saved !== current;
+}
+```
+
+## Signature {#signature}
+
+```ts
+function getBiometryState(): Promise<string | null>;
+```
+
+<Facts returns="Promise<string | null>" prompt="Never" />
+
+### Returns {#returns}
+
+A string, or `null` when no biometrics is enrolled. Compare it only with an earlier answer of the same device; its content means nothing else.
+
+| | The token |
+| --- | --- |
+| iOS | A form of the biometric domain state hash of `LocalAuthentication` (`domainState.biometry.stateHash` from iOS 18, `evaluatedPolicyDomainState` before) |
+| Android | Android has no such state. The package keeps a small Keystore key that a new enrollment invalidates, and the token is its generation: a new key, and a new token, after a change |
+
+- **`null` during a lockout before iOS 18.** iOS 17 and older can't read the state while the biometrics is locked after failed scans, and the token is `null` then too. Don't take a `null` for "the biometrics changed" without a token to compare.
+- **An OS update may change it on iOS.** Apple's hash can differ after a major iOS update with the same biometrics. The package itself compares the state of an item only within one major version, so a `biometryCurrentSet` item survives the update; treat a changed token as "maybe changed", and let the read decide.
+- **Android asks Class 3 biometrics.** The token is `null` when no strong biometrics is enrolled, even if a weaker face unlock is.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'When the biometrics change', text: 'How each platform notices it, and KEY_INVALIDATED.', to: '/docs/fundamentals/biometrics#invalidation' },
+    { name: 'AccessControl', text: '`biometryCurrentSet` and `biometryAny`.', to: '/api/options/AccessControl' },
+  ]}
+/>

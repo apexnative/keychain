@@ -1,0 +1,345 @@
+/* The reference pages in the values of navigation's DocsApi board; keychain's own is the steel blue of its accents.
+   The parts sit inside the Markdown of the page, so the rules that would leak in (paragraph sizes, margins, table
+   stripes) are reset here with the page's own selector. */
+
+.muted {
+  color: var(--an-muted);
+}
+
+/* ---------------------------------------------------------------- header */
+
+.kindRow {
+  margin-top: 22px;
+}
+
+.kind {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--an-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 2px solid var(--an-edge);
+  background: var(--an-surface);
+  line-height: normal;
+}
+
+.h1c {
+  font-family: var(--an-mono);
+  font-weight: 500;
+  font-size: clamp(26px, 3.4vw, 37px);
+  line-height: 1.1;
+  margin: 14px 0 0;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+:global(.theme-doc-markdown.markdown) .lead {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--an-muted);
+  max-width: 760px;
+  margin: 14px 0 0;
+}
+
+/* ----------------------------------------------------------- status card */
+
+.stc {
+  margin: 26px 0 0;
+  padding: 16px 18px;
+  border: 2px solid var(--an-edge);
+  border-radius: 18px;
+  background: var(--an-surface);
+  line-height: normal;
+}
+
+.stcHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.stcTitle {
+  font-family: var(--an-display);
+  font-size: 16.5px;
+  color: var(--an-text);
+  text-decoration: none;
+}
+
+.stcTitle:hover {
+  color: var(--an-text);
+}
+
+.stcNote {
+  font-size: 13px;
+  color: var(--an-muted);
+}
+
+.pill {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 2px solid #101828;
+  color: #101828;
+}
+
+.pill_stable {
+  background: #2a9d8f;
+}
+
+.pill_review {
+  background: #e9b949;
+}
+
+.pill_draft {
+  background: transparent;
+  color: var(--an-text);
+  border-color: var(--an-edge);
+}
+
+/* Not in the package yet: the outline of a pill. */
+.pill_planned {
+  background: transparent;
+  color: var(--an-muted);
+  border: 2px dashed var(--an-muted);
+}
+
+/* ------------------------------------------------------------- platforms */
+
+.pfs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pf {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: normal;
+  padding: 3px 9px;
+  border-radius: 8px;
+  border: 2px solid #101828;
+  color: #101828;
+  white-space: nowrap;
+}
+
+.pf_ios {
+  background: #5fa8d3;
+}
+
+.pf_android {
+  background: #8a9a5b;
+}
+
+.pfOff {
+  background: transparent;
+  color: var(--an-muted);
+  border: 2px dashed var(--an-line);
+}
+
+/* ---------------------------------------------------------------- tables */
+
+.ptabBox {
+  overflow-x: auto;
+  margin: 14px 0 0;
+  border: 2px solid var(--an-line);
+  border-radius: 14px;
+}
+
+.ptab {
+  display: table;
+  width: 100%;
+  min-width: 520px;
+  margin: 0;
+  border-collapse: collapse;
+  text-align: left;
+  overflow: visible;
+}
+
+.ptab thead tr {
+  background: var(--an-surface2);
+  border: 0;
+}
+
+.ptab tr,
+.ptab tr:nth-child(2n) {
+  background: transparent;
+  border: 0;
+}
+
+.th {
+  padding: 10px 14px;
+  font-weight: 500;
+  color: var(--an-muted);
+  border: 0;
+  text-align: left;
+  line-height: normal;
+}
+
+.td {
+  padding: 10px 14px;
+  border: 0;
+  border-top: 1px solid var(--an-line);
+  vertical-align: top;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tdName {
+  font-family: var(--an-mono);
+  font-size: 12px;
+}
+
+/* The name of a field or a parameter: it is what the reader looks for, so it stands out. */
+.fieldName {
+  display: inline-block;
+  margin: 0 6px 4px 0;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: rgba(233, 185, 73, 0.22);
+  border: 1px solid rgba(233, 185, 73, 0.65);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--an-text);
+  white-space: nowrap;
+}
+
+/* Must be given: no `?` in its type. */
+.req {
+  display: inline-block;
+  vertical-align: 1px;
+  font-family: var(--an-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #386684;
+  color: #fffaf0;
+}
+
+.tdType {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  color: var(--an-muted);
+}
+
+/* ----------------------------------------------------------------- facts */
+
+.facts {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px 14px;
+  margin: 16px 0 0;
+  align-items: baseline;
+  line-height: normal;
+}
+
+.factLabel {
+  font-size: 10px;
+  color: var(--an-muted);
+}
+
+.factText {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* -------------------------------------------------------------- see also */
+
+.alsoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.also {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 2px solid var(--an-edge);
+  border-radius: 18px;
+  background: var(--an-surface);
+  color: var(--an-text);
+  text-decoration: none;
+  transition: transform 0.2s ease;
+  line-height: normal;
+}
+
+.also:hover {
+  color: var(--an-text);
+  transform: translateY(-3px);
+  box-shadow: 0 4px 0 var(--an-accent);
+}
+
+.alsoName {
+  font-family: var(--an-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.alsoText {
+  font-size: 13px;
+  color: var(--an-muted);
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------ phone (DocsPhone) */
+
+@media (max-width: 640px) {
+  .kindRow {
+    margin-top: 10px;
+  }
+
+  .kind {
+    font-size: 10px;
+    padding: 3px 9px;
+  }
+
+  .h1c {
+    font-size: 26px;
+    margin-top: 10px;
+  }
+
+  :global(.theme-doc-markdown.markdown) .lead {
+    font-size: 14px;
+    line-height: 1.6;
+    margin-top: 10px;
+  }
+
+  .stc {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 16px;
+  }
+
+  .stcTitle {
+    font-size: 16px;
+  }
+
+  .stcNote {
+    display: none;
+  }
+
+  .pill {
+    font-size: 10px;
+    padding: 3px 9px;
+  }
+
+  .pf {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 7px;
+  }
+}

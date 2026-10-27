@@ -1,0 +1,50 @@
+---
+title: getBiometryTypes
+description: 'The biometric modalities of the device that can unlock a key, enrolled or not; empty without biometric hardware. Use it to name the feature: "Face ID", "Touch ID" or "biometrics".'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Function" importName="getBiometryTypes" />
+
+## Usage {#usage}
+
+```ts title="src/auth/biometrics.ts"
+import { BiometryType, getBiometryTypes } from '@apexnative/keychain';
+
+export async function biometryName(): Promise<string> {
+  const types = await getBiometryTypes();
+  if (types.length === 1 && types[0] === BiometryType.FaceID) return 'Face ID';
+  if (types.length === 1 && types[0] === BiometryType.TouchID) return 'Touch ID';
+  return 'biometrics';
+}
+```
+
+## Signature {#signature}
+
+```ts
+function getBiometryTypes(): Promise<BiometryType[]>;
+```
+
+<Facts returns="Promise<BiometryType[]>" prompt="Never" />
+
+### Returns {#returns}
+
+An array of [BiometryType](./BiometryType): on iOS one of `'faceID'`, `'touchID'`, `'opticID'`; on Android any of `'fingerprint'`, `'face'`, `'iris'`. Empty on a device without biometric hardware that can unlock a key.
+
+## Notes {#notes}
+
+- **Enrolled or not.** The array says what the hardware is, not whether a face or a finger is enrolled. Whether an item can be protected now is [`canUseAccessControl`](./canUseAccessControl)'s answer.
+- **Why an array.** Android doesn't tell an app which modality `BiometricPrompt` will offer: a phone with a fingerprint sensor and a face sensor may show either. Name the feature by what the array holds, and say "biometrics" when there are several.
+- **Android lists only devices with strong biometrics.** When the device has Class 3 biometrics, which can unlock a Keystore key, the array has its sensors. Android doesn't say the class of each sensor, so a phone with a Class 3 fingerprint sensor and a Class 2 face unlock lists `'face'` too, though only the fingerprint opens the items. A device whose biometrics are all weaker gets an empty array.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'BiometryType', text: 'The values in the array.', to: '/api/device/BiometryType' },
+    { name: 'canUseAccessControl', text: 'Whether an item can be protected now.', to: '/api/device/canUseAccessControl' },
+    { name: 'How biometrics works', text: 'What the device can tell you.', to: '/docs/fundamentals/biometrics#device' },
+  ]}
+/>

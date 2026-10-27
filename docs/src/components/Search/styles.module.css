@@ -1,0 +1,161 @@
+.button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 10px 0 12px;
+  border-radius: 12px;
+  border: 1px solid #3a4766;
+  background: #101828;
+  color: #b5a88c;
+  font-family: var(--an-body);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: #e9b949;
+  color: #f3e9d2;
+}
+
+.icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.kbd {
+  font-family: var(--an-mono);
+  font-size: 10px;
+  color: #d9cfb8;
+  border: 1px solid #3a4766;
+  border-bottom-width: 3px;
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(16, 24, 40, 0.62);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 80px 16px 16px;
+  box-sizing: border-box;
+}
+
+.dismiss {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: 0;
+  cursor: default;
+}
+
+.dialog {
+  position: relative;
+  width: 100%;
+  max-width: 620px;
+  background: var(--an-surface);
+  color: var(--an-text);
+  border: 3px solid #101828;
+  border-radius: 22px;
+  box-shadow: 0 10px 0 #101828;
+  overflow: hidden;
+  font-family: var(--an-body);
+  line-height: normal;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 2px solid var(--an-line);
+}
+
+.radar {
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--an-text);
+  font-family: var(--an-body);
+  font-size: 16px;
+}
+
+.esc {
+  font-family: var(--an-mono);
+  font-size: 10px;
+  color: var(--an-muted);
+  background: transparent;
+  border: 1px solid var(--an-line);
+  border-bottom-width: 3px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.hits {
+  max-height: 360px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--an-text);
+  text-decoration: none;
+}
+
+.hit:hover {
+  background: var(--an-surface2);
+  color: var(--an-text);
+  text-decoration: none;
+}
+
+.hitSection {
+  font-family: var(--an-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--an-muted);
+}
+
+.hitTitle {
+  font-weight: 600;
+}
+
+.none {
+  margin: 0;
+  padding: 18px 12px;
+  color: var(--an-muted);
+}
+
+@media (max-width: 996px) {
+  .label,
+  .kbd {
+    display: none;
+  }
+
+  .button {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+}

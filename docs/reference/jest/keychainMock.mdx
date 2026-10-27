@@ -1,0 +1,233 @@
+---
+title: keychainMock
+description: 'The controls of the mock: the simulated device, how the next prompt ends, a new finger or face, the prompts shown so far, and the items of react-native-keychain and expo-secure-store that a migration finds.'
+hide_title: true
+---
+
+import { ApiHeader, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Object" importName="keychainMock" from="@apexnative/keychain/jest" />
+
+`keychainMock` drives the device that [`@apexnative/keychain/jest`](/api/jest/overview) simulates. The app's code runs against the mock unchanged; a test uses these controls to put the device in a state, play how a prompt ends, and check what the code showed the user.
+
+## Usage {#usage}
+
+```ts title="src/auth/restore.test.ts"
+import { KeychainErrorCode, keychainMock } from '@apexnative/keychain/jest';
+import { vault } from './storage';
+import { unlockRefreshToken } from './restore';
+
+beforeEach(() => keychainMock.reset());
+
+test('a cancel goes to the password form', async () => {
+  await vault.setItem('refreshToken', 'r-1');
+  keychainMock.failNextAuthentication(KeychainErrorCode.UserCanceled);
+
+  expect(await unlockRefreshToken()).toBe('password');
+  expect(keychainMock.prompts()).toHaveLength(1);
+});
+```
+
+## Signature {#signature}
+
+```ts
+const keychainMock: KeychainMock;
+```
+
+An object with the controls below; its type is [`KeychainMock`](/api/jest/types#keychainmock). There is one per module, shared by every store, `migrate` and `compat` of the mock.
+
+## reset {#reset}
+
+```ts
+reset(): void;
+```
+
+Forgets every item of every store, every recorded prompt, every queued failure and every planted old item, and restores the [default device](/api/jest/overview#device). The enrolled biometry is back to its first state too, so `getBiometryState()` returns the same token as at the start.
+
+```ts
+beforeEach(() => keychainMock.reset());
+```
+
+Call it before every test: the mock is a module, and what one test stored is otherwise still there in the next.
+
+## setDevice {#setDevice}
+
+```ts
+setDevice(device: Partial<MockDevice>): void;
+```
+
+Changes the fields of the simulated device it is given and keeps the others ([`MockDevice`](/api/jest/types#mockdevice)). The calls after it see the new device: what `getBiometryTypes`, `canUseAccessControl`, `isPasscodeSet`, `getBiometryState` and `getHardwareSecurityLevel` answer, and whether a protected write succeeds. Items written before stay as they are.
+
+```ts
+import {
+  AccessControl,
+  BiometryType,
+  HardwareSecurityLevel,
+  canUseAccessControl,
+  keychainMock,
+} from '@apexnative/keychain/jest';
+
+// A phone without enrolled biometry.
+keychainMock.setDevice({ biometryEnrolled: false });
+await canUseAccessControl(AccessControl.BiometryCurrentSet);
+// { available: false, reason: 'notEnrolled' }
+
+// An Android 10 phone with a fingerprint sensor and StrongBox.
+keychainMock.setDevice({
+  biometryTypes: [BiometryType.Fingerprint],
+  androidApi: 29,
+  hardwareSecurityLevel: HardwareSecurityLevel.Strongbox,
+});
+await canUseAccessControl(AccessControl.BiometryAnyOrPasscode);
+// { available: false, reason: 'unsupportedOS' }
+```
+
+A field of the device decides several answers at once, as on a phone:
+
+- `biometryTypes: []` — no sensor: `getBiometryTypes()` is `[]` and `getBiometryState()` is `null`; `biometryAny`, `biometryCurrentSet` and `biometryCurrentSetOrPasscode` are `noHardware` and their writes throw `BIOMETRY_NOT_AVAILABLE`. `biometryAnyOrPasscode` and `passcode` stay available.
+- `biometryEnrolled: false` — `getBiometryState()` is `null`; `biometryAny`, `biometryCurrentSet` and `biometryCurrentSetOrPasscode` are `notEnrolled` and their writes throw `BIOMETRY_NOT_ENROLLED`. `biometryAnyOrPasscode` stays available: the passcode opens it.
+- `passcodeSet: false` — every `accessControl` but `none` is `passcodeNotSet`, and a write with one of them, or with `whenPasscodeSetThisDeviceOnly`, throws `PASSCODE_NOT_SET`.
+- `faceIDUsageDescription: false` — on a device with `faceID`, a biometric write and `canUseAccessControl` for a biometric `accessControl` reject with `MISSING_USAGE_DESCRIPTION`.
+- `androidApi` below 30 — the passcode variants are `unsupportedOS`, and a write with one of them, or with `authValidity` above 0, throws `UNSUPPORTED`.
+- `hardwareSecurityLevel` — `getItemInfo` reports `android.securityLevel` for new items, and `strongboxRequired` throws `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.
+
+## failNextAuthentication {#failNextAuthentication}
+
+```ts
+failNextAuthentication(code: KeychainErrorCode): void;
+```
+
+Makes the next prompt fail with `code` instead of succeeding. The prompt is still recorded by [`prompts()`](#prompts), and the read rejects with a `KeychainError` of that code. Calls queue up, one failure per prompt, so a test can play a cancel, then a lockout, then a success:
+
+```ts
+keychainMock.failNextAuthentication(KeychainErrorCode.UserCanceled);
+keychainMock.failNextAuthentication(KeychainErrorCode.Lockout);
+
+await vault.getItem('refreshToken'); // rejects: USER_CANCELED
+await vault.getItem('refreshToken'); // rejects: LOCKOUT
+await vault.getItem('refreshToken'); // 'r-1'
+```
+
+- The code is any [`KeychainErrorCode`](/api/errors/KeychainErrorCode), as a constant or a string; anything else throws a `TypeError` at once. The ones a prompt ends with on a device are `USER_CANCELED`, `USER_FALLBACK`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT` and `KEY_INVALIDATED`.
+- `KEY_INVALIDATED` also deletes the item, as the device does.
+- Only a prompt takes a failure from the queue: writes, reads of items without protection and the device functions leave it for the next prompt. That includes the prompt of [`migrateItem`](/api/migrate/migrateItem) for a protected old item.
+
+## changeBiometry {#changeBiometry}
+
+```ts
+changeBiometry(): void;
+```
+
+A new finger or face on the device. Items written before it with `biometryCurrentSet` or `biometryCurrentSetOrPasscode` throw `KEY_INVALIDATED` at their next read and are deleted; the read shows no prompt. Items of `biometryAny` and `biometryAnyOrPasscode` keep working, and [`getBiometryState()`](/api/device/getBiometryState) returns a new token.
+
+```ts
+test('new biometry signs the user out of Face ID', async () => {
+  const before = await getBiometryState();
+  await vault.setItem('refreshToken', 'r-1');
+  keychainMock.changeBiometry();
+
+  expect(await getBiometryState()).not.toBe(before);
+  await expect(vault.getItem('refreshToken')).rejects.toMatchObject({
+    code: KeychainErrorCode.KeyInvalidated,
+  });
+  expect(await vault.hasItem('refreshToken')).toBe(false);
+});
+```
+
+An item written after the change belongs to the new biometry and reads as usual.
+
+## prompts {#prompts}
+
+```ts
+prompts(): MockPrompt[];
+```
+
+The prompts shown since the last [`reset`](#reset), oldest first. Each is a [`MockPrompt`](/api/jest/types#mockprompt): the `key` of the item it was for, and the texts it had, the store's and the call's merged field by field, with `confirmationRequired` (`true` unless one of them set it).
+
+```ts
+const vault = createKeychain({
+  service: 'vault',
+  accessControl: AccessControl.BiometryAny,
+  prompt: { title: 'Unlock the vault', cancel: 'Use password' },
+});
+await vault.setItem('pin', '1234');
+await vault.getItem('pin', { prompt: { title: 'Confirm the payment' } });
+
+keychainMock.prompts();
+// [{ key: 'pin', title: 'Confirm the payment', cancel: 'Use password', confirmationRequired: true }]
+```
+
+What never shows a prompt on a device records nothing: writes, `hasItem`, `getItemInfo`, `getAllKeys`, `clear`, reads of items without protection, and a read that throws `KEY_INVALIDATED` after [`changeBiometry`](#changeBiometry). The prompt of `migrateItem` for a protected old item is recorded with the old item's account as `key`: the user name of react-native-keychain, the key of expo-secure-store.
+
+The array is a copy: changing it changes nothing in the mock.
+
+## addMigrationSource {#addMigrationSource}
+
+```ts
+addMigrationSource(item: MockMigrationItem): void;
+```
+
+Plants an item of react-native-keychain or expo-secure-store, as that library would have left it on the device, for [`migrate`](/api/jest/overview#migrate) to find. The item is a [`MockMigrationItem`](/api/jest/types#mockmigrationitem): a generic password (`service`), internet credentials (`server`) or an item of expo-secure-store (`key`, `value`, `keychainService` that defaults to `app`). A planted item replaces one of the same kind, service and account.
+
+With `@apexnative/keychain/migrate` mocked [as the overview shows](/api/jest/overview#migrate):
+
+```ts title="src/storage/migrate.test.ts"
+import { keychain, keychainMock } from '@apexnative/keychain/jest';
+import { migrateFromReactNativeKeychain } from '@apexnative/keychain/migrate';
+
+beforeEach(() => keychainMock.reset());
+
+test('the old sign-in moves to the new storage', async () => {
+  keychainMock.addMigrationSource({
+    library: 'reactNativeKeychain',
+    service: 'dev.apexnative.keychain.mock', // the default service of the mock
+    username: 'ivan@example.com',
+    password: 'secret',
+  });
+
+  const report = await migrateFromReactNativeKeychain({ removeSource: true });
+
+  expect(report.migrated).toEqual(['dev.apexnative.keychain.mock']);
+  expect(await keychain.getCredentials()).toEqual({
+    username: 'ivan@example.com',
+    password: 'secret',
+  });
+  expect(keychainMock.migrationSources()).toEqual([]);
+});
+```
+
+Three fields shape how the old item behaves:
+
+- `requiresAuth: true` — the old item is protected. `migrateFrom…` skips it as `requiresAuth`; `migrateItem` shows a prompt, which is recorded and takes a queued failure.
+- `corrupted: true` — reading it fails with `DATA_CORRUPTED`, as bytes that aren't text do; the [report](/api/migrate/types#migrationreport) has it under `skipped` with the reason `error`.
+- `accessGroup` — the group the old item is in; a migration that names an `accessGroup` finds only the items of that group.
+
+## migrationSources {#migrationSources}
+
+```ts
+migrationSources(): MockMigrationSource[];
+```
+
+The planted items that are still there, in the order they were planted, as [`MockMigrationSource`](/api/jest/types#mockmigrationsource): the library, the kind, the service, the account, whether it needs authentication, and `migrated` once a run moved it and kept it. A run with `removeSource` deletes the old item, so it is no longer in the list.
+
+```ts
+keychainMock.addMigrationSource({ library: 'expoSecureStore', key: 'token', value: 't-1' });
+
+await migrateFromExpoSecureStore();
+keychainMock.migrationSources();
+// [{ library: 'expoSecureStore', kind: 'secureStore', service: 'app', account: 'token',
+//    requiresAuth: false, migrated: true }]
+
+await migrateFromExpoSecureStore({ removeSource: true });
+keychainMock.migrationSources(); // []
+```
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: '/jest', text: 'The mock module: setup, exports, what it simulates.', to: '/api/jest/overview' },
+    { name: 'Types', text: 'The shapes of the device, the prompts and the old items.', to: '/api/jest/types' },
+    { name: 'Testing', text: 'The guide, with the tests of a Face ID sign-in.', to: '/docs/guides/testing' },
+  ]}
+/>

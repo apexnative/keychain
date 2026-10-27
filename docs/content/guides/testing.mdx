@@ -1,0 +1,330 @@
+---
+title: Testing
+description: 'The mock for Jest: the package over a store in memory, with a simulated device you control, the prompts it showed and how they end, and the old items a migration moves. And Face ID and fingerprints in Detox on simulators and emulators.'
+---
+
+## Jest {#jest}
+
+Jest runs without native code. `@apexnative/keychain/jest` is the package's own API over a store in memory: the same functions, the same checks of keys and options, the same merging of a store's options with a call's, and the same `KeychainError`s. Next to it, [`keychainMock`](/api/jest/keychainMock) controls the device the mock simulates and the prompts it "shows".
+
+### Set it up {#setup}
+
+Replace the package with the mock in a setup file:
+
+```js title="jest.setup.js"
+jest.mock('@apexnative/keychain', () => require('@apexnative/keychain/jest'));
+```
+
+```js title="jest.config.js"
+module.exports = {
+  // …the preset and options your app already has
+  setupFiles: ['./jest.setup.js'],
+};
+```
+
+Your code keeps importing `@apexnative/keychain`; the tests import `keychainMock` from `@apexnative/keychain/jest`. Both are the same module, so the controls act on the store your code uses. Reset it before every test: [`reset()`](/api/jest/keychainMock#reset) forgets every item, every recorded prompt, every queued failure and every planted old item, and restores the default device.
+
+```ts title="src/session.test.ts"
+import { keychainMock } from '@apexnative/keychain/jest';
+import { loadSession, saveSession, signOut } from './session';
+
+beforeEach(() => keychainMock.reset());
+
+test('a saved session loads again', async () => {
+  await saveSession('token-1');
+  expect(await loadSession()).toBe('token-1');
+});
+
+test('sign-out removes the token', async () => {
+  await saveSession('token-1');
+  await signOut();
+  expect(await loadSession()).toBeNull();
+});
+```
+
+If the app imports `@apexnative/keychain/migrate` or `@apexnative/keychain/compat`, mock them too, with the parts of the mock that work over the same memory: see [A migration](#migration) and [The compat layer](#compat).
+
+### The simulated device {#device}
+
+By default the mock is an iPhone with Face ID enrolled and a passcode:
+
+| Field of [`MockDevice`](/api/jest/types#mockdevice) | Default | What it changes |
+| --- | --- | --- |
+| `defaultService` | `'dev.apexnative.keychain.mock'` | The service of `keychain` |
+| `biometryTypes` | `['faceID']` | What `getBiometryTypes` returns; `[]` is a device without biometric hardware |
+| `biometryEnrolled` | `true` | Whether biometry is enrolled |
+| `passcodeSet` | `true` | Whether the device has a passcode; biometry needs one too, as on a phone |
+| `faceIDUsageDescription` | `true` | Whether the app has `NSFaceIDUsageDescription` in its `Info.plist` |
+| `androidApi` | `null` | The Android API level; `null` is a device that isn't an Android one |
+| `hardwareSecurityLevel` | `null` | What `getHardwareSecurityLevel` returns (`null` as on iOS) and `getItemInfo` reports as `android.securityLevel` |
+
+[`setDevice`](/api/jest/keychainMock#setDevice) changes the fields it is given and keeps the rest. The device decides what `canUseAccessControl` answers and whether a protected write succeeds, as a phone would:
+
+```ts title="src/auth/biometrics.test.ts"
+import { BiometryType, keychainMock } from '@apexnative/keychain/jest';
+import { biometricOffer } from './biometrics';
+import { completeSignIn } from './signIn';
+import { session } from './storage';
+
+const tokens = { accessToken: 'a-1', refreshToken: 'r-1', username: 'ivan@example.com' };
+
+beforeEach(() => keychainMock.reset());
+
+test('no Face ID switch without enrolled biometrics', async () => {
+  keychainMock.setDevice({ biometryEnrolled: false });
+  expect(await biometricOffer()).toBeNull(); // canUseAccessControl: { available: false, reason: 'notEnrolled' }
+});
+
+test('a fingerprint phone is offered "biometrics"', async () => {
+  keychainMock.setDevice({ biometryTypes: [BiometryType.Fingerprint, BiometryType.Face] });
+  expect(await biometricOffer()).toBe('biometrics');
+});
+
+test('sign-in still works when the write to the vault fails', async () => {
+  keychainMock.setDevice({ biometryTypes: [] }); // the vault's setItem throws BIOMETRY_NOT_AVAILABLE
+  await completeSignIn(tokens, true);
+  expect(await session.getItem('accessToken')).toBe('a-1');
+});
+```
+
+A write the device can't protect throws as on a device, and nothing is stored:
+
+- `BIOMETRY_NOT_AVAILABLE` without biometric hardware, `BIOMETRY_NOT_ENROLLED` without enrolled biometry;
+- `PASSCODE_NOT_SET` for a passcode option or `whenPasscodeSetThisDeviceOnly` without a passcode;
+- `MISSING_USAGE_DESCRIPTION` for a biometric `accessControl` on a Face ID device with `faceIDUsageDescription: false`;
+- `UNSUPPORTED` for the passcode variants, or an `authValidity` above 0, with `androidApi` below 30;
+- `HARDWARE_UNAVAILABLE` for `strongboxRequired` with a `hardwareSecurityLevel` other than `strongbox`.
+
+A missing Face ID text is a mistake of the app's setup, and it is loud: `canUseAccessControl` rejects too, rather than answering that Face ID is unavailable. A test can keep it from shipping:
+
+```ts title="src/auth/biometrics.test.ts"
+import { AccessControl, KeychainErrorCode, canUseAccessControl } from '@apexnative/keychain';
+
+test('a Face ID device without the usage description', async () => {
+  keychainMock.setDevice({ faceIDUsageDescription: false });
+  await expect(canUseAccessControl(AccessControl.BiometryCurrentSet)).rejects.toMatchObject({
+    code: KeychainErrorCode.MissingUsageDescription,
+  });
+});
+```
+
+An Android phone before Android 11 can't fall back to the passcode, so an app that offers "Face ID or passcode" needs a plan for it:
+
+```ts title="src/auth/biometrics.test.ts"
+test('Android 10 has no passcode fallback', async () => {
+  keychainMock.setDevice({ biometryTypes: [BiometryType.Fingerprint], androidApi: 29 });
+  await expect(canUseAccessControl(AccessControl.BiometryAnyOrPasscode)).resolves.toEqual({
+    available: false,
+    reason: 'unsupportedOS',
+  });
+});
+```
+
+### The prompts {#prompts}
+
+A read of an item with an `accessControl` "shows" the prompt: by default it succeeds, and the mock records it. [`prompts()`](/api/jest/keychainMock#prompts) returns them, oldest first, with the key of the item and the texts the prompt had, the store's and the call's merged:
+
+```ts title="src/auth/restore.test.ts"
+import { KeychainErrorCode, keychainMock } from '@apexnative/keychain/jest';
+import { vault } from './storage';
+import { unlockRefreshToken } from './restore';
+
+beforeEach(() => keychainMock.reset());
+
+test('the refresh token comes out after the prompt', async () => {
+  await vault.setItem('refreshToken', 'r-1');
+  expect(keychainMock.prompts()).toEqual([]); // a write never prompts
+
+  expect(await unlockRefreshToken()).toBe('r-1');
+  expect(keychainMock.prompts()).toEqual([
+    {
+      key: 'refreshToken',
+      title: 'Sign in to Example',
+      cancel: 'Use password',
+      confirmationRequired: true,
+    },
+  ]);
+});
+```
+
+What never prompts on a device records nothing here either: writes, `hasItem`, `getItemInfo`, `getAllKeys`, `clear`, and reads of items without protection. A sync read of a protected item throws `AUTH_REQUIRED`, as on a device.
+
+### How a prompt ends {#failures}
+
+[`failNextAuthentication(code)`](/api/jest/keychainMock#failNextAuthentication) makes the next prompt fail with the code instead of succeeding. Calls queue up, one failure per prompt, so a test can play a cancel, then a lockout, then a success:
+
+```ts title="src/auth/restore.test.ts"
+test('a cancel goes to the password form', async () => {
+  await vault.setItem('refreshToken', 'r-1');
+  keychainMock.failNextAuthentication(KeychainErrorCode.UserCanceled);
+  expect(await unlockRefreshToken()).toBe('password');
+  expect(await vault.hasItem('refreshToken')).toBe(true); // still there for the next launch
+});
+
+test('a lockout, then Face ID works again', async () => {
+  await vault.setItem('refreshToken', 'r-1');
+  keychainMock.failNextAuthentication(KeychainErrorCode.Lockout);
+  expect(await unlockRefreshToken()).toBe('password');
+  expect(await unlockRefreshToken()).toBe('r-1');
+});
+```
+
+The code is any `KeychainErrorCode` (anything else throws a `TypeError`). The ones a prompt ends with on a device are `USER_CANCELED`, `USER_FALLBACK`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT` and `KEY_INVALIDATED`; `KEY_INVALIDATED` also deletes the item, as the device does. A failure waits in the queue until a prompt comes: writes and reads of items without protection don't use it up.
+
+### Changed biometrics {#biometry-change}
+
+[`changeBiometry()`](/api/jest/keychainMock#changeBiometry) is a new finger or face on the device. Items written with `biometryCurrentSet` or `biometryCurrentSetOrPasscode` throw `KEY_INVALIDATED` at their next read, without a prompt, and are deleted; `biometryAny*` items keep working, and `getBiometryState()` returns a new token.
+
+```ts title="src/auth/restore.test.ts"
+test('new biometrics signs the user out of Face ID', async () => {
+  await vault.setItem('refreshToken', 'r-1');
+  keychainMock.changeBiometry();
+
+  expect(await unlockRefreshToken()).toBe('signIn');
+  expect(await vault.hasItem('refreshToken')).toBe(false);
+});
+```
+
+### A migration {#migration}
+
+An app that moves its users from react-native-keychain or expo-secure-store runs `@apexnative/keychain/migrate` at launch. The mock has it over the same memory, as `migrate`; mock the entry point with it next to the package:
+
+```js title="jest.setup.js"
+jest.mock('@apexnative/keychain', () => require('@apexnative/keychain/jest'));
+jest.mock('@apexnative/keychain/migrate', () => require('@apexnative/keychain/jest').migrate);
+```
+
+On a device the old items are wherever the old library left them; in a test, [`addMigrationSource`](/api/jest/keychainMock#addMigrationSource) plants them, and [`migrationSources()`](/api/jest/keychainMock#migrationSources) shows what is left of them after the run:
+
+```ts title="src/storage/migrate.test.ts"
+import {
+  AccessControl,
+  KeychainErrorCode,
+  keychain,
+  keychainMock,
+} from '@apexnative/keychain/jest';
+import {
+  migrateFromExpoSecureStore,
+  migrateFromReactNativeKeychain,
+  migrateItem,
+} from '@apexnative/keychain/migrate';
+
+beforeEach(() => keychainMock.reset());
+
+test('the old sign-in moves over, and the old item goes', async () => {
+  keychainMock.addMigrationSource({
+    library: 'reactNativeKeychain',
+    service: 'dev.apexnative.keychain.mock', // the mock's default service
+    username: 'ivan@example.com',
+    password: 'secret',
+  });
+
+  await migrateFromReactNativeKeychain({ removeSource: true });
+
+  expect(await keychain.getCredentials()).toEqual({
+    username: 'ivan@example.com',
+    password: 'secret',
+  });
+  expect(keychainMock.migrationSources()).toEqual([]);
+});
+
+test('a second launch moves nothing twice', async () => {
+  keychainMock.addMigrationSource({ library: 'expoSecureStore', key: 'token', value: 't-1' });
+
+  await migrateFromExpoSecureStore(); // moves it, and keeps the old item marked
+  expect(await migrateFromExpoSecureStore()).toEqual({
+    migrated: [],
+    skipped: [{ key: 'token', kind: 'secureStore', reason: 'exists' }],
+    warnings: [],
+  });
+  expect(await keychain.getItem('token')).toBe('t-1');
+});
+```
+
+Where the migration names no service, the mock looks where the libraries keep their items on iOS: react-native-keychain's generic password under the device's `defaultService`, expo-secure-store's items under the `keychainService` `app`. An old item planted with `requiresAuth: true` is skipped by `migrateFrom…` as `requiresAuth`; [`migrateItem`](/api/migrate/migrateItem) moves it with a prompt, which `prompts()` records with the old item's account as its `key` and which takes a queued failure like any other:
+
+```ts title="src/storage/migrate.test.ts"
+test('a canceled prompt leaves the old item for later', async () => {
+  keychainMock.addMigrationSource({
+    library: 'reactNativeKeychain',
+    service: 'auth',
+    username: 'ivan@example.com',
+    password: 'secret',
+    requiresAuth: true,
+  });
+  keychainMock.failNextAuthentication(KeychainErrorCode.UserCanceled);
+
+  const report = await migrateItem(
+    { library: 'reactNativeKeychain', service: 'auth' },
+    { setOptions: { accessControl: AccessControl.BiometryCurrentSet } }
+  );
+
+  expect(report.skipped[0]?.error?.code).toBe(KeychainErrorCode.UserCanceled);
+  expect(keychainMock.migrationSources()).toHaveLength(1);
+});
+```
+
+`corrupted: true` makes reading an old item fail with `DATA_CORRUPTED`, so a test can check that the app copes with a [report](/api/migrate/types#migrationreport) that has an `error` in it.
+
+### The compat layer {#compat}
+
+An app that kept the calls of react-native-keychain through [`@apexnative/keychain/compat`](/api/compat/overview) mocks it with the mock's `compat`, again over the same memory:
+
+```js title="jest.setup.js"
+jest.mock('@apexnative/keychain', () => require('@apexnative/keychain/jest'));
+jest.mock('@apexnative/keychain/compat', () => require('@apexnative/keychain/jest').compat);
+```
+
+`import * as Keychain from '@apexnative/keychain/compat'` and `import Keychain from '@apexnative/keychain/compat'` both work. A generic password is the credentials of a store, so the test can check it through the package's own API too:
+
+```ts title="src/auth/legacy.test.ts"
+import { keychain, keychainMock } from '@apexnative/keychain/jest';
+import * as Keychain from '@apexnative/keychain/compat';
+
+beforeEach(() => keychainMock.reset());
+
+test('setGenericPassword writes the credentials of the default store', async () => {
+  await Keychain.setGenericPassword('ivan@example.com', 'secret');
+  expect(await keychain.getCredentials()).toEqual({
+    username: 'ivan@example.com',
+    password: 'secret',
+  });
+});
+```
+
+### What the mock doesn't simulate {#limits}
+
+The mock answers like a device for storage, protection at write time, prompts, invalidation and the old items of a migration. It doesn't model:
+
+- **The lock state of the device.** Reads never fail with `INTERACTION_NOT_ALLOWED`, whatever `accessible` says.
+- **The reuse window.** With `authValidity`, every protected read still records a prompt.
+- **Access groups and iCloud.** Items are kept by service; `accessGroup` and `synchronizable` don't change where, and `MISSING_ENTITLEMENT` never happens.
+- **The prompt queue and the activity.** Prompts don't wait for each other, `NO_ACTIVITY` never happens, and the system ends a prompt only when a test queues it.
+- **Reinstalls.** `clearOnReinstall` is a setting of the app, not of the mock.
+
+[/jest](/api/jest/overview#limits) lists what the mock simulates and what it doesn't in full. The end-to-end tests below are for the rest.
+
+## End-to-end with Detox {#e2e}
+
+On a simulator and an emulator the prompt is real, and Detox can pass it or fail it.
+
+**iOS simulator.** Enroll Face ID or Touch ID first (in the Simulator, *Features → Face ID → Enrolled*), then match or fail in the test:
+
+```ts title="e2e/unlock.test.ts"
+await device.setBiometricEnrollment(true);
+await element(by.id('unlock')).tap();
+await device.matchFace(); // or device.unmatchFace(); matchFinger() on a Touch ID simulator
+await expect(element(by.id('home'))).toBeVisible();
+```
+
+**Android emulator.** Set a screen lock and enroll a fingerprint in the emulator's settings once. A touch from the host passes the prompt:
+
+```bash title="Terminal"
+adb -e emu finger touch 1
+```
+
+The scenarios worth an end-to-end test are the ones the mock doesn't model, and the real system behind the ones it does: a read while the device is locked or the app is in the background, the reuse window of `authValidity`, a second read while a prompt is open, and a real new enrollment that makes an item `KEY_INVALIDATED`.
+
+## The web {#web}
+
+On the web every method throws `UNSUPPORTED`. A component test that renders for the web, or a Storybook, needs the mock above.

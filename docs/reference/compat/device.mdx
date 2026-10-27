@@ -1,0 +1,105 @@
+---
+title: Device
+description: 'What the device can do, asked with the functions of react-native-keychain 10: its biometry, whether it can authenticate the user, where Android keeps keys, whether there is a passcode.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, Params, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Functions" importName="getSupportedBiometryType, canImplyAuthentication, getSecurityLevel, isPasscodeAuthAvailable" from="@apexnative/keychain/compat" />
+
+Four questions about the device, answered by the core's [device functions](/api/device/getBiometryTypes) and given back with rnk's names. None shows a prompt. For new code, [`canUseAccessControl`](/api/device/canUseAccessControl) answers the question these are usually asked for, whether an item can be locked a given way now, and says why not.
+
+## Usage {#usage}
+
+```ts title="src/auth/biometrics.ts"
+import * as Keychain from '@apexnative/keychain/compat';
+
+export async function biometricLabel(): Promise<string | null> {
+  switch (await Keychain.getSupportedBiometryType()) {
+    case Keychain.BIOMETRY_TYPE.FACE_ID:
+      return 'Face ID';
+    case Keychain.BIOMETRY_TYPE.TOUCH_ID:
+      return 'Touch ID';
+    case null:
+      return null; // nothing enrolled: don't offer the switch
+    default:
+      return 'Biometrics';
+  }
+}
+```
+
+## getSupportedBiometryType {#getSupportedBiometryType}
+
+```ts
+function getSupportedBiometryType(): Promise<BIOMETRY_TYPE | null>;
+```
+
+<Facts returns="Promise<BIOMETRY_TYPE | null>" prompt="Never" />
+
+The biometry the device can use now, as a [`BIOMETRY_TYPE`](./constants#biometry-type), or `null` when none is enrolled, as rnk answers. It asks [`getBiometryTypes`](/api/device/getBiometryTypes) for the sensors and [`getBiometryState`](/api/device/getBiometryState) for whether anything is enrolled.
+
+- A device with no biometric sensor, or with one and nothing enrolled, answers `null`.
+- A device with several (Android: a fingerprint and a face) answers the first the system reports. Which one the prompt shows is the system's choice; the core's `getBiometryTypes` gives them all.
+
+## canImplyAuthentication {#canImplyAuthentication}
+
+```ts
+function canImplyAuthentication(options?: AuthenticationTypeOption): Promise<boolean>;
+```
+
+<Facts returns="Promise<boolean>" prompt="Never" />
+
+Whether the device can authenticate the user the way `authenticationType` names:
+
+<Params
+  items={[
+    { name: 'options.authenticationType', type: 'AUTHENTICATION_TYPE', default: 'DEVICE_PASSCODE_OR_BIOMETRICS', text: '`DEVICE_PASSCODE_OR_BIOMETRICS`: an enrolled biometry or a passcode ([`getBiometryState`](/api/device/getBiometryState) or [`isPasscodeSet`](/api/device/isPasscodeSet)). `BIOMETRICS`: an enrolled biometry.' },
+  ]}
+/>
+
+```ts
+await Keychain.canImplyAuthentication({
+  authenticationType: Keychain.AUTHENTICATION_TYPE.BIOMETRICS,
+}); // true when a finger or a face is enrolled
+```
+
+rnk answers this on iOS only; here Android answers too, with the same meaning.
+
+## getSecurityLevel {#getSecurityLevel}
+
+```ts
+function getSecurityLevel(options?: AccessControlOption): Promise<SECURITY_LEVEL | null>;
+```
+
+<Facts returns="Promise<SECURITY_LEVEL | null>" prompt="Never" platforms={['android']} />
+
+Android: where a new key would live, with rnk's names. It asks [`getHardwareSecurityLevel`](/api/device/getHardwareSecurityLevel):
+
+| The core | `getSecurityLevel` |
+| --- | --- |
+| `'strongbox'`, `'tee'` | `SECURE_HARDWARE` |
+| `'software'` | `SECURE_SOFTWARE` |
+| `null` (iOS) | `null` |
+
+It never answers `ANY`. The `accessControl` of the options is checked (`APPLICATION_PASSWORD` is `UNSUPPORTED`) and changes nothing: every key of the package lives where the device keeps keys.
+
+## isPasscodeAuthAvailable {#isPasscodeAuthAvailable}
+
+```ts
+function isPasscodeAuthAvailable(): Promise<boolean>;
+```
+
+<Facts returns="Promise<boolean>" prompt="Never" />
+
+Whether the device has a passcode, PIN or pattern: the core's [`isPasscodeSet`](/api/device/isPasscodeSet).
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'canUseAccessControl', text: 'Whether an item can be locked a given way now, and why not.', to: '/api/device/canUseAccessControl' },
+    { name: 'Constants', text: '`BIOMETRY_TYPE`, `AUTHENTICATION_TYPE`, `SECURITY_LEVEL`.', to: '/api/compat/constants' },
+    { name: 'Overview', text: 'Every function of `/compat` and the core call it makes.', to: '/api/compat/overview' },
+  ]}
+/>

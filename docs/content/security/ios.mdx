@@ -1,0 +1,67 @@
+---
+title: On iOS
+description: 'How the package uses the iOS Keychain: the layout of an item, atomic writes, prompts through LAContext, reads that never prompt, iCloud, the check for changed biometrics, and clearOnReinstall.'
+---
+
+On iOS, iPadOS and Mac Catalyst, every item is an item of the system Keychain, written and read through the Security framework. The module is Objective-C++.
+
+## An item {#item}
+
+| Attribute | Holds |
+| --- | --- |
+| `kSecClass` | `kSecClassGenericPassword` |
+| `kSecAttrService` | The service |
+| `kSecAttrAccount` | The key |
+| `kSecValueData` | The value: the bytes, or the UTF-8 of a string |
+| `kSecAttrLabel` | The `label` |
+| `kSecAttrGeneric` | The package's metadata, a small property list: the version of the format, the encoding of the value, the `accessControl`, the `authValidity`, whether there is a label, and the biometric state at write time with the major version of iOS it was taken under. Nothing secret: it is read without a prompt |
+
+The package's items carry its mark, `kSecAttrCreator = 'ApxK'`, and every query is limited to it. The package sees only its own items: those of other libraries, under the same service too, are never read, listed or removed, and [`clearOnReinstall`](../guides/reinstall) removes only the package's. Every query sets `kSecUseDataProtectionKeychain`, which keeps the behavior of iOS on Mac Catalyst. A write under a key that another library's item holds in the same service fails with `INVALID_ARGUMENT`, and leaves that item as it was.
+
+## Writes {#writes}
+
+A write is atomic: if the new value can't be stored, the old one stays.
+
+- An item without access control is updated in place with `SecItemUpdate`, or added with `SecItemAdd` when there is none yet. When `SecItemUpdate` fails, it has changed nothing.
+- An item with access control can't change in place, and an update of it could need the user. So the new item is first added under a temporary key, which proves it can be stored; then the old one goes, the new one is added under its key, and the temporary one goes. No step changes an item with access control, so none needs a prompt. The same path takes over when the old item is locked away (`errSecInteractionNotAllowed`).
+
+A write never shows a prompt. Before it, the package checks that the device can provide the protection: no biometrics or no passcode is an error (`BIOMETRY_NOT_ENROLLED`, `BIOMETRY_NOT_AVAILABLE`, `PASSCODE_NOT_SET`), never an item with less protection.
+
+## Prompts {#prompts}
+
+Prompts go through `LAContext` only: `localizedReason`, `localizedCancelTitle` and `localizedFallbackTitle` come from `prompt`, and the context reaches the Keychain with `kSecUseAuthenticationContext`. The deprecated `kSecUseOperationPrompt` and `kSecUseAuthenticationUI*` aren't used.
+
+The prompt evaluates the item's own access control (`evaluateAccessControl`), then the read hands that context to the Keychain, so the user sees one prompt, not two. Prompts come one at a time, in the order the reads asked, on a queue of their own: the module's queue never waits for a user.
+
+With `authValidity > 0`, the `LAContext` that passed is kept per service and `accessControl` for that many seconds and handed to the next reads; it is dropped when the app goes to the background. The first read after the app starts always prompts.
+
+The fallback button of a prompt for biometrics alone (`biometryAny`, `biometryCurrentSet`) ends the read with `USER_FALLBACK`; for the other values the fallback is the passcode.
+
+On a device with Face ID, the package checks `NSFaceIDUsageDescription` before a write, a read or `canUseAccessControl` with biometrics; without it they fail with `MISSING_USAGE_DESCRIPTION` rather than crashing the app.
+
+## Reads that never prompt {#no-prompt}
+
+`hasItem`, `getItemInfo` and `getAllKeys` run with an `LAContext` whose `interactionNotAllowed` is `true`, so the system can't show a prompt. For a protected item the Keychain answers `errSecInteractionNotAllowed`, which means the item exists.
+
+## iCloud {#icloud}
+
+A write sets `kSecAttrSynchronizable` explicitly. Reads, removes and listings use `kSecAttrSynchronizableAny`, so an item is found whether or not it is synchronized.
+
+## Changed biometrics {#biometrics}
+
+An item with `biometryCurrentSet*` keeps the biometric domain state of the moment it was written (`evaluatedPolicyDomainState`, and `domainState.biometry.stateHash` on iOS 18 and newer). A read compares it with the current state, under the same major version of iOS only: Apple's hash may change with a major update. A different state is `KEY_INVALIDATED`, and the item is removed. The package doesn't depend on which status the Keychain returns for an invalidated item.
+
+## clearOnReinstall {#clear-on-reinstall}
+
+With `ApexKeychainClearOnReinstall = YES` in `Info.plist`, the first Keychain call looks for an install marker in `UserDefaults`. `UserDefaults` are deleted with the app, Keychain items aren't: no marker means a new install, and the package removes the items it wrote, in every service of the app's default access group, before any call reaches one of them.
+
+- **iCloud Keychain items stay.** Deleting one would delete it on every device of the account, the old phone that still has the app too.
+- **Items of a shared access group stay**: the other apps of the group may still use them.
+- **Not before the first unlock.** After a restart, `UserDefaults` read empty until the device is unlocked. Until then the call fails with `INTERACTION_NOT_ALLOWED`, deletes nothing, and the next call checks again.
+- **The marker is set without the key too**, so an update that turns the key on deletes nothing on devices that already had the app.
+
+## Threads {#threads}
+
+Every operation runs on the package's own queue, off the main thread and the JS thread. The exception is the sync methods, which run on the JS thread and are allowed only where no prompt can appear.
+
+Core Foundation objects (`SecAccessControl`, the results of `SecItemCopyMatching`) are released by the module.

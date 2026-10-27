@@ -1,0 +1,55 @@
+---
+title: BiometryType
+description: 'A biometric modality that can unlock a key, as getBiometryTypes reports it: Face ID, Touch ID and Optic ID on iOS; fingerprint, face and iris on Android. A constant object and a type of the same name.'
+hide_title: true
+---
+
+import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
+
+<ApiHeader kind="Constants" importName="BiometryType" />
+
+## Usage {#usage}
+
+```ts
+import { BiometryType, getBiometryTypes } from '@apexnative/keychain';
+
+const hasFace = (await getBiometryTypes()).includes(BiometryType.FaceID);
+```
+
+## Signature {#signature}
+
+```ts
+const BiometryType: {
+  readonly FaceID: 'faceID';
+  readonly TouchID: 'touchID';
+  readonly OpticID: 'opticID';
+  readonly Fingerprint: 'fingerprint';
+  readonly Face: 'face';
+  readonly Iris: 'iris';
+};
+
+type BiometryType = (typeof BiometryType)[keyof typeof BiometryType];
+```
+
+<Facts type="'faceID' | 'touchID' | 'opticID' | 'fingerprint' | 'face' | 'iris'" />
+
+## Values {#values}
+
+| Constant | String | Platform | What |
+| --- | --- | --- | --- |
+| `FaceID` | `'faceID'` | iOS | Face ID |
+| `TouchID` | `'touchID'` | iOS | Touch ID |
+| `OpticID` | `'opticID'` | iOS | Optic ID, on Apple Vision Pro |
+| `Fingerprint` | `'fingerprint'` | Android | A fingerprint sensor |
+| `Face` | `'face'` | Android | Face recognition |
+| `Iris` | `'iris'` | Android | Iris recognition |
+
+An iOS device reports one value at most; an Android device may report several. `BiometryType.FaceID` is the string `'faceID'`, so a comparison with either works.
+
+## See also {#see-also}
+
+<SeeAlso
+  items={[
+    { name: 'getBiometryTypes', text: 'The modalities of the device.', to: '/api/device/getBiometryTypes' },
+  ]}
+/>

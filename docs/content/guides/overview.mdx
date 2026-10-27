@@ -1,0 +1,42 @@
+---
+title: All guides
+description: 'Every guide by the task it answers: sign-in with Face ID, the key of an encrypted database, reinstalls, sharing with other apps, iCloud Keychain and tests.'
+---
+
+Guides take one task from start to finish, in your app: which protection to choose, where each piece of code goes, what the user sees, and what to do when a step fails.
+
+If you are new to the package, read the [Quick start](../start/quick-start) and [Protection](../fundamentals/protection) first: the guides build on `keychain`, `createKeychain` and the options of an item.
+
+## Sign-in and sessions {#sessions}
+
+| I want to… | Guide |
+| --- | --- |
+| Let the user back in with Face ID or a fingerprint, after a password or SSO sign-in | [Sign-in with Face ID](./biometric-sign-in) |
+| Keep a fallback for a cancel, a lockout or changed biometrics | [Sign-in with Face ID](./biometric-sign-in#fallback) |
+| Rotate the refresh token after every refresh without a prompt | [Sign-in with Face ID](./biometric-sign-in#rotation) |
+
+## Data and devices {#data}
+
+| I want to… | Guide |
+| --- | --- |
+| Encrypt MMKV or SQLite with a random key instead of one in the code | [A key for MMKV or SQLCipher](./encryption-key) |
+| Start clean after the app is deleted and installed again on iOS | [Reinstalls](./reinstall) |
+| Share a token with my other apps, a widget or an extension | [Sharing between apps](./sharing-between-apps) |
+| Make an item follow the user to their other Apple devices | [iCloud Keychain](./icloud-keychain) |
+
+## Tests {#tests}
+
+| I want to… | Guide |
+| --- | --- |
+| Run Jest without native code | [Testing](./testing#jest) |
+| Test a cancel, a lockout or changed biometrics in Jest | [Testing](./testing#failures) |
+| Test a phone without Face ID, or without a passcode | [Testing](./testing#device) |
+| Test a migration from react-native-keychain or expo-secure-store | [Testing](./testing#migration) |
+| Pass Face ID or a fingerprint in Detox on a simulator or an emulator | [Testing](./testing#e2e) |
+
+## Coming from another library {#migration}
+
+- [From react-native-keychain](../migration/from-react-native-keychain)
+- [From expo-secure-store](../migration/from-expo-secure-store)
+
+Something not covered? The [FAQ](../help/faq) answers the common questions, and [an issue](https://github.com/apexnative/keychain/issues) is welcome.
