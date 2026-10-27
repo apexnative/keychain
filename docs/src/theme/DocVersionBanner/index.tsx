@@ -33,7 +33,8 @@ const STAGES: Record<string, { name: string; promise: string }> = {
   },
   rc: {
     name: 'Release candidate',
-    promise: 'The API is final; only fixes land until the release.',
+    promise:
+      'The API is final, except the sections marked Draft; only fixes land until the release.',
   },
 };
 

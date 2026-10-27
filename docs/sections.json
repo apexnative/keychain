@@ -143,7 +143,7 @@
         {
           "id": "storage",
           "title": "Storage",
-          "status": "review",
+          "status": "stable",
           "guide": "/docs/fundamentals/storage-model",
           "docs": [
             "storage/keychain",
@@ -156,7 +156,7 @@
         {
           "id": "options",
           "title": "Options",
-          "status": "review",
+          "status": "stable",
           "guide": "/docs/fundamentals/protection",
           "docs": [
             "options/KeychainOptions",
@@ -170,7 +170,7 @@
         {
           "id": "device",
           "title": "Device capabilities",
-          "status": "review",
+          "status": "stable",
           "guide": "/docs/fundamentals/biometrics",
           "docs": [
             "device/getBiometryTypes",
@@ -196,7 +196,7 @@
         {
           "id": "errors",
           "title": "Errors",
-          "status": "review",
+          "status": "stable",
           "guide": "/docs/fundamentals/errors",
           "docs": [
             "errors/KeychainError",
@@ -233,7 +233,7 @@
         {
           "id": "compat",
           "title": "/compat",
-          "status": "review",
+          "status": "stable",
           "guide": "/docs/migration/from-react-native-keychain#compat",
           "docs": [
             "compat/overview",
@@ -255,7 +255,7 @@
         {
           "id": "jest",
           "title": "/jest",
-          "status": "review",
+          "status": "stable",
           "guide": "/docs/guides/testing",
           "docs": ["jest/overview", "jest/keychainMock", "jest/types"],
           "labels": ["Overview", "keychainMock", "Types"]
@@ -263,7 +263,7 @@
         {
           "id": "plugin",
           "title": "Config plugin",
-          "status": "review",
+          "status": "stable",
           "guide": "/docs/start/installation#expo",
           "docs": ["plugin"],
           "labels": ["Config plugin"]
