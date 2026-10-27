@@ -249,6 +249,54 @@ class AuthenticationTest : KeychainTestCase() {
         assertEquals(next, capabilities.biometryState())
     }
 
+    /**
+     * `biometryCurrentSetOrPasscode` remembers the biometry it was written with: a new set — here a canary gone, a new
+     * fingerprint is PromptTest's — or none at all ends the item, KEY_INVALIDATED without a prompt, as the Keystore
+     * ends `biometryCurrentSet`'s. A sensor that can't say leaves the item be; the other access controls don't
+     * remember.
+     */
+    @Test
+    fun currentSetOrPasscodeRemembersTheBiometry() {
+        assumeTrue(NEEDS_LOCK_BIOMETRY_11, hasScreenLock && hasBiometry && device.sdk >= 30)
+        val currentSetOrPasscode = options(accessControl = AccessControl.BIOMETRY_CURRENT_SET_OR_PASSCODE)
+        keychain.setItem(service, "token", "v", Encoding.UTF8, currentSetOrPasscode)
+        val either = options(accessControl = AccessControl.BIOMETRY_ANY_OR_PASSCODE)
+        keychain.setItem(service, "either", "v", Encoding.UTF8, either)
+        val state = keychain.capabilities.biometryState()
+        assertNotNull(state)
+        assertEquals(state, storedItems(service).getValue("token").biometryState)
+        assertNull(storedItems(service).getValue("either").biometryState)
+        assertTrue(keychain.read(service, "token", Encoding.UTF8) is Keychain.Read.Authenticate)
+
+        device.authenticationStatus = BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE
+        assertTrue(keychain.read(service, "token", Encoding.UTF8) is Keychain.Read.Authenticate)
+        device.authenticationStatus = null
+
+        deleteKeystoreKey(KeyAliases.BIOMETRY_STATE + state)
+        assertCode(KeychainErrorCode.KEY_INVALIDATED) { keychain.read(service, "token", Encoding.UTF8) }
+        assertFalse(keychain.hasItem(service, "token"))
+        assertTrue(keychain.read(service, "either", Encoding.UTF8) is Keychain.Read.Authenticate)
+
+        // A new item belongs to the new set; when no biometry is left, it goes too.
+        keychain.setItem(service, "token", "w", Encoding.UTF8, currentSetOrPasscode)
+        assertNotEquals(state, storedItems(service).getValue("token").biometryState)
+        device.authenticationStatus = BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
+        assertCode(KeychainErrorCode.KEY_INVALIDATED) { keychain.read(service, "token", Encoding.UTF8) }
+        assertFalse(keychain.hasItem(service, "token"))
+    }
+
+    /** The file can't make the item forget its biometry: DATA_CORRUPTED, and the item stays. */
+    @Test
+    fun currentSetOrPasscodeWithoutItsBiometryIsDataCorrupted() {
+        assumeTrue(NEEDS_LOCK_BIOMETRY_11, hasScreenLock && hasBiometry && device.sdk >= 30)
+        val currentSetOrPasscode = options(accessControl = AccessControl.BIOMETRY_CURRENT_SET_OR_PASSCODE)
+        keychain.setItem(service, "token", "v", Encoding.UTF8, currentSetOrPasscode)
+        val item = storedItems(service).getValue("token")
+        writeStore(service, mapOf("token" to item.copy(biometryState = null)))
+        assertCode(KeychainErrorCode.DATA_CORRUPTED) { newKeychain().read(service, "token", Encoding.UTF8) }
+        assertTrue(newKeychain().hasItem(service, "token"))
+    }
+
     /** The real device's level: StrongBox where there is one, else where the Keystore attests a new key lives. */
     @Test
     fun hardwareSecurityLevel() {

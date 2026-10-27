@@ -42,6 +42,12 @@ class StoreFormatTest {
                     accessControl = AccessControl.PASSCODE,
                     authValidity = 300,
                 ),
+                "biometry" to item.copy(
+                    scheme = Scheme.RSA_OAEP_AES_GCM,
+                    wrappedKey = Base64.encode(ByteArray(256)),
+                    accessControl = AccessControl.BIOMETRY_CURRENT_SET_OR_PASSCODE,
+                    biometryState = "0123456789abcdef",
+                ),
             ),
         )
         assertEquals(data, StoreFormat.decode(StoreFormat.encode(data), "vault"))
@@ -68,6 +74,11 @@ class StoreFormatTest {
         val window = StoreData("vault", mapOf("token" to item.copy(authValidity = 30)))
         val withWindow = JSONObject(String(StoreFormat.encode(window), Charsets.UTF_8))
         assertEquals(30, withWindow.getJSONObject("items").getJSONObject("token").getInt("av"))
+        // No biometry remembered, no field.
+        assertFalse(stored.has("bs"))
+        val biometry = StoreData("vault", mapOf("token" to item.copy(biometryState = "0123456789abcdef")))
+        val withBiometry = JSONObject(String(StoreFormat.encode(biometry), Charsets.UTF_8))
+        assertEquals("0123456789abcdef", withBiometry.getJSONObject("items").getJSONObject("token").getString("bs"))
     }
 
     @Test
@@ -109,6 +120,7 @@ class StoreFormatTest {
             "a time that isn't a number" to withItem { put("c", "yesterday") }.toString(),
             "a negative window" to withItem { put("av", -1) }.toString(),
             "a window that isn't whole" to withItem { put("av", 1.5) }.toString(),
+            "a biometry state that isn't a string" to withItem { put("bs", 7) }.toString(),
             "a wrapped key without its scheme" to withItem { put("wk", "AAAA") }.toString(),
             "a hybrid scheme without a wrapped key" to withItem { put("scheme", "rsa-oaep+aes-gcm") }.toString(),
         )

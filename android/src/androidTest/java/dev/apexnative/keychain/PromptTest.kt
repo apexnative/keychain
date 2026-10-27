@@ -401,8 +401,9 @@ class PromptTest : PromptTestCase() {
 
     /**
      * A new fingerprint, enrolled in Settings: the Keystore invalidates the keys of `biometryCurrentSet` — the read
-     * ends KEY_INVALIDATED, from `KeyPermanentlyInvalidatedException`, without a prompt, and the item is gone —
-     * `getBiometryState` changes, and `biometryAny` reads with the new finger. The finger is deleted after. A key of
+     * ends KEY_INVALIDATED, from `KeyPermanentlyInvalidatedException`, without a prompt, and the item is gone — the
+     * library ends `biometryCurrentSetOrPasscode`'s items the same way (Android 11+), `getBiometryState` changes, and
+     * `biometryAny` reads with the new finger. The finger is deleted after. A key of
      * the test's own witnesses that the Keystore saw the new finger at all. The emulator's fingerprint HAL before
      * Android 10 keeps its authenticator id across enrollments (the API 24 and 28 images), so nothing is ever
      * invalidated there; on API 24 deleting the finger also leaves the sensor deaf to the next prompts.
@@ -413,6 +414,8 @@ class PromptTest : PromptTestCase() {
         assumeFalse("The emulator's fingerprint HAL before Android 10 keeps its authenticator id", oldEmulator)
         write("currentSet", "biometryCurrentSet")
         write("any", "biometryAny")
+        val orPasscode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        if (orPasscode) write("currentSetOrPasscode", "biometryCurrentSetOrPasscode")
         val before = call { module.getBiometryState(it) }.value as String
         val witness = witnessKey()
         val newFinger = (Setup.fingers.max() + 1..Setup.fingers.max() + 9).first { it != Person.strangeFinger }
@@ -430,6 +433,11 @@ class PromptTest : PromptTestCase() {
                 invalidated.error?.getMap("userInfo")?.getString("nativeDomain"),
             )
             assertEquals(false, call { module.hasItem(store, "currentSet", it) }.value)
+            if (orPasscode) {
+                val ended = read("currentSetOrPasscode", "Ended, not expected").await(NO_PROMPT_SECONDS)
+                assertEquals("KEY_INVALIDATED", ended.code)
+                assertEquals(false, call { module.hasItem(store, "currentSetOrPasscode", it) }.value)
+            }
 
             val any = read("any", "Any")
             Person.prompt("Any")
