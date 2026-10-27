@@ -419,7 +419,7 @@ class PromptTest : PromptTestCase() {
         val before = call { module.getBiometryState(it) }.value as String
         val witness = witnessKey()
         val newFinger = (Setup.fingers.max() + 1..Setup.fingers.max() + 9).first { it != Person.strangeFinger }
-        val name = Person.enrollFinger(newFinger)
+        val name = Person.enrollFingers(listOf(newFinger)).single()
         try {
             bringBack()
             val seen = invalidated(witness)

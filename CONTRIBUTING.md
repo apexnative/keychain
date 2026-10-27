@@ -55,13 +55,18 @@ one line each. The native tests, each with its usage at its top:
   Face ID on the simulator and answer the prompts themselves; the script grants the app Face ID and
   takes it to the background when a test asks. A test the simulator can't run fails rather than
   skips.
-- `scripts/test-android.sh [SERIAL]` runs the JVM tests (`android/src/test`); with an emulator's
-  serial, such as `emulator-5554`, the instrumented tests of `android/src/androidTest` too, on that
-  emulator only. They enroll and delete fingerprints, lock the screen and answer the prompt
-  themselves, so run them on an emulator, never on your own phone. The emulator needs the PIN
-  `1234` and fingers 1 and 2 enrolled (`PIN=…` and `FINGERS=…` for others), and the tests reach its
-  console with the token in `~/.emulator_console_auth_token`, which the emulator writes on its
-  first start. A locked emulator is unlocked with the PIN first.
+- `scripts/test-android.sh [--emulator [API] | SERIAL]` runs the JVM tests (`android/src/test`).
+  With `--emulator` it also runs the instrumented tests of `android/src/androidTest` on an
+  emulator made for the run — from the newest system image installed with a fingerprint sensor,
+  or the newest of the API given, such as `--emulator 30` — which it gives the PIN `1234` and
+  fingers 1 and 2, enrolled in Settings, and deletes after, whatever the result. With a serial,
+  such as `emulator-5554`, they run on that device as it is: an emulator there needs the PIN
+  `1234` and fingers 1 and 2 (`PIN=…` and `FINGERS=…` for others), and is unlocked with the PIN
+  when it's locked. The tests enroll and delete fingerprints, lock the screen and answer the
+  prompt themselves, so run them on an emulator, never on your own phone. They reach the
+  emulator's console with the token in `~/.emulator_console_auth_token`, which the emulator
+  writes on its first start. A system image comes from the SDK manager, for example
+  `sdkmanager "system-images;android-36;google_apis;arm64-v8a"` (`x86_64` on an Intel Mac).
 
 ## Documentation
 

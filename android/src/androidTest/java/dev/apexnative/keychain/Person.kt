@@ -1,15 +1,17 @@
 package dev.apexnative.keychain
 
 import android.app.KeyguardManager
+import android.app.admin.DevicePolicyManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
-import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
@@ -114,6 +116,30 @@ internal object Person {
         waitUntil("the home screen shows") { ui.currentPackageName != context.packageName }
     }
 
+    /**
+     * A PIN for the screen lock, on a device that has none: `locksettings` from Android 8, before it Settings, as a
+     * person sets it.
+     */
+    fun setPin() {
+        if (keyguard.isDeviceSecure) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            shell("locksettings set-pin ${Setup.pin}")
+        } else {
+            context.startActivity(
+                Intent(DevicePolicyManager.ACTION_SET_NEW_PASSWORD).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            find(By.text("PIN"), "the PIN among the screen locks").click()
+            // The PIN, and the PIN again.
+            repeat(2) {
+                find(PIN_FIELD, "a field for the PIN")
+                typePin()
+                Thread.sleep(STEP_MILLIS)
+            }
+            find(By.text(Pattern.compile("done", Pattern.CASE_INSENSITIVE)), "Done").click()
+        }
+        waitUntil("the device has the PIN") { keyguard.isDeviceSecure }
+    }
+
     /** The screen off and locked, as the power button does. */
     fun lockScreen() {
         if (ui.isScreenOn) shell("input keyevent KEYCODE_POWER")
@@ -132,41 +158,53 @@ internal object Person {
             }
             Thread.sleep(BOUNCER_MILLIS)
             typePin()
-            if (eventually { !keyguard.isKeyguardLocked }) return
+            // The keyguard goes first; the device counts as unlocked a moment later.
+            if (eventually { !keyguard.isKeyguardLocked && !keyguard.isDeviceLocked }) return
         }
         fail("The screen didn't unlock with the PIN")
     }
 
     /**
-     * Enrolls another finger in Settings, as a person does: the PIN, the list of fingerprints, Add, the consent, the
-     * finger on the sensor until it's added. Returns the name Settings gives it. All in one visit: leaving the list
-     * revokes the challenge the enrollment was given, and the sensor then ignores the finger (Android 11).
+     * Enrolls fingers in Settings, as a person does: the PIN, the consent, each finger on the sensor until it's added,
+     * Add another for the next. Returns the names Settings gives them. All in one visit: leaving Settings revokes the
+     * challenge the next enrollment would be given, and the sensor then ignores the finger (Android 11).
      */
-    fun enrollFinger(id: Int): String {
-        settings(FINGERPRINTS)
-        find(FINGER, "the list of fingerprints")
-        val before = fingerNames()
-        find(ADD, "the button that adds a fingerprint").click()
-        val deadline = SystemClock.uptimeMillis() + ENROLL_MILLIS
-        var pinTyped = false
-        while (!ui.hasObject(ADDED)) {
-            if (SystemClock.uptimeMillis() > deadline) fail("Settings didn't add the finger: ${screen()}")
-            when {
-                !pinTyped && ui.hasObject(PIN_FIELD) -> {
-                    typePin()
-                    pinTyped = true
-                }
-                ui.hasObject(TOUCH_THE_SENSOR) -> touch(id)
-                ui.hasObject(NEXT) -> ui.findObject(NEXT).click()
-            }
-            Thread.sleep(STEP_MILLIS)
+    fun enrollFingers(ids: List<Int>): List<String> {
+        // With no finger yet, the enrollment itself: the list would hand it over and close.
+        val first = shell("dumpsys fingerprint").contains("\"count\":0")
+        val before = if (first) {
+            settings(ENROLL)
+            emptyList()
+        } else {
+            settings(FINGERPRINTS)
+            fingerNames().also { find(ADD, "the button that adds a fingerprint").click() }
         }
-        find(By.text(Pattern.compile("done", Pattern.CASE_INSENSITIVE)), "Done").click()
-        waitUntil("the list shows the new finger") { fingerNames().size == before.size + 1 }
+        var pinTyped = false
+        ids.forEachIndexed { index, id ->
+            val deadline = SystemClock.uptimeMillis() + ENROLL_MILLIS
+            while (!ui.hasObject(ADDED)) {
+                if (SystemClock.uptimeMillis() > deadline) fail("Settings didn't add the finger: ${screen()}")
+                when {
+                    !pinTyped && ui.hasObject(PIN_FIELD) -> {
+                        typePin()
+                        pinTyped = true
+                    }
+                    ui.hasObject(TOUCH_THE_SENSOR) -> touch(id)
+                    ui.hasObject(NEXT) -> ui.findObject(NEXT).click()
+                }
+                Thread.sleep(STEP_MILLIS)
+            }
+            val next = if (index < ids.lastIndex) "add another" else "done"
+            find(By.text(Pattern.compile(next, Pattern.CASE_INSENSITIVE)), "'$next'").click()
+            if (!ui.wait(Until.gone(ADDED), PATIENCE_MILLIS)) fail("Settings stays on the finger added")
+        }
+        // The list, for the names: after the first fingers Settings leaves, and it's opened again.
+        if (!ui.wait(Until.hasObject(FINGER), GLANCE_MILLIS)) settings(FINGERPRINTS)
+        waitUntil("the list shows the new fingers") { fingerNames().size == before.size + ids.size }
         val added = fingerNames() - before.toSet()
         ui.pressBack()
-        if (added.size != 1) fail("Settings enrolled ${added.size} fingers: $added")
-        return added.single()
+        if (added.size != ids.size) fail("Settings enrolled ${added.size} fingers: $added")
+        return added
     }
 
     /** Deletes the finger [name] in Settings: its row's delete button, or on Android 7 the row's own dialog. */
@@ -197,14 +235,17 @@ internal object Person {
     // A screen of Settings, which asks for the PIN first.
     private fun settings(action: String) {
         if (!start(action)) {
-            // Before Android 10 the list has no action of its own: Security, then Fingerprint.
+            // Before Android 10 the list has no action of its own, and before Android 9 the enrollment neither:
+            // Security, then Fingerprint.
             assumeTrue("Settings has no '$action' nor security settings here", start(Settings.ACTION_SECURITY_SETTINGS))
             val entry = By.text(Pattern.compile("fingerprint", Pattern.CASE_INSENSITIVE))
             val list = ui.wait(Until.findObject(By.scrollable(true)), PATIENCE_MILLIS)
             val found = ui.findObject(entry) ?: list?.scrollUntil(Direction.DOWN, Until.findObject(entry))
             (found ?: find(entry, "Fingerprint in the security settings")).click()
         }
-        find(PIN_FIELD, "Settings asking for the PIN")
+        // The PIN, when Settings asks for it: not right after it was set.
+        waitUntil("Settings") { ui.hasObject(PIN_FIELD) || ui.hasObject(ADD) || ui.hasObject(NEXT) }
+        if (!ui.hasObject(PIN_FIELD) && !ui.wait(Until.hasObject(PIN_FIELD), GLANCE_MILLIS)) return
         typePin()
         if (!ui.wait(Until.gone(PIN_FIELD), PATIENCE_MILLIS)) fail("Settings didn't take the PIN")
     }
@@ -261,6 +302,7 @@ internal object Person {
     private const val ENROLL_MILLIS = 60_000L
 
     private const val FINGERPRINTS = "android.settings.FINGERPRINT_SETTINGS"
+    private const val ENROLL = "android.settings.FINGERPRINT_ENROLL"
     private val PIN_FIELD = By.clazz("android.widget.EditText")
     private val DELETE_BUTTON = By.res("com.android.settings", "delete_button")
     private val FINGER = By.res("android", "title").text(Pattern.compile("Finger \\d+"))
