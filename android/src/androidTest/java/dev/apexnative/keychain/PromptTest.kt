@@ -244,8 +244,9 @@ class PromptTest : PromptTestCase() {
 
     /**
      * The home button while a prompt shows: the reads waiting behind it end SYSTEM_CANCELED at once; the shown one the
-     * system closes, and says why — Android 16 calls the home button the user's cancel. Back in the
-     * app, the queue goes on.
+     * system closes, and says why — Android 11+ calls the home button the user's cancel. Back in the
+     * app, the queue goes on. Before Android 9 the prompt is androidx.biometric's dialog in the activity, which nothing
+     * closes: it's still there when the app comes back, and answers.
      */
     @Test
     fun theBackgroundCancels() {
@@ -256,12 +257,20 @@ class PromptTest : PromptTestCase() {
         Person.prompt("Shown")
         Person.pressHome()
         assertEquals("SYSTEM_CANCELED", waiting.await().code)
-        val expected = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) "USER_CANCELED" else "SYSTEM_CANCELED"
-        assertEquals(expected, shown.await().code)
-        // Nor does the read behind it get its prompt, over the home screen, before the activity's pause comes.
-        assertFalse(Person.sees("Waiting", GLANCE_MILLIS))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val expected = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) "USER_CANCELED" else "SYSTEM_CANCELED"
+            assertEquals(expected, shown.await().code)
+            // Nor does the read behind it get its prompt, over the home screen, before the activity's pause comes.
+            assertFalse(Person.sees("Waiting", GLANCE_MILLIS))
+            bringBack()
+        } else {
+            assertTrue(shown.pending)
+            bringBack()
+            Person.prompt("Shown")
+            Person.touch(Person.finger)
+            assertEquals("secret of shown", shown.await().value)
+        }
 
-        bringBack()
         val again = read("waiting", "Again")
         Person.prompt("Again")
         Person.touch(Person.finger)

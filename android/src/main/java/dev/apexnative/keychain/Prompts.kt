@@ -2,6 +2,7 @@ package dev.apexnative.keychain
 
 import android.content.ComponentCallbacks2
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.biometric.BiometricManager.Authenticators
@@ -16,7 +17,8 @@ import com.facebook.react.bridge.ReactApplicationContext
  * The prompts of protected reads: one `BiometricPrompt` at a time, in the order the reads asked; reads
  * without authentication never come here. The queue lives on the main thread; the reads' crypto stays on
  * [KeychainExecutor]. When the activity pauses, the reads still waiting are SYSTEM_CANCELED; the prompt that's showing
- * is closed by the system, which says why — Android 16 calls the home button the user's cancel. When the app's UI goes
+ * is closed by the system, which says why — Android 11+ calls the home button the user's cancel — or, before Android 9,
+ * stays in the activity until the user answers it. When the app's UI goes
  * to the background, [onBackground] closes the windows of `authValidity`, as iOS does on `didEnterBackground`: a
  * dialog or an activity on top of the app's (a share sheet, a permission request) leaves them open.
  */
@@ -97,6 +99,10 @@ internal class PromptQueue(
     // On the main thread, before anything else there: no waiting read gets its prompt after the app has gone.
     override fun onHostPause() {
         cancelWaiting()
+        // Before Android 9 the prompt is androidx.biometric's own dialog, in the activity, and nothing cancels it: it
+        // waits there for the user to come back and answer it. A cancel would leave the dialog, and androidx.biometric
+        // would show no prompt after it. The real version, not the device's: it's androidx.biometric that chooses.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         showingAtPause = current
     }
 
