@@ -98,7 +98,7 @@ try {
 | | How the change is noticed |
 | --- | --- |
 | iOS | The item keeps the biometric domain state of the moment it was written. A read compares it with the current one; a different state is `KEY_INVALIDATED`, whatever status the Keychain returns. The state is compared only within one major version of iOS, whose updates may change Apple's hash. |
-| Android | The Keystore key is made with `setInvalidatedByBiometricEnrollment(true)`; the system invalidates it, and a read gets `KeyPermanentlyInvalidatedException`. Before a write the package checks the key without a prompt and makes a new one if it is dead, so a write never stores a value that can't be read. |
+| Android | `biometryCurrentSet`: the Keystore key is made with `setInvalidatedByBiometricEnrollment(true)`; the system invalidates it, and a read gets `KeyPermanentlyInvalidatedException`. Before a write the package checks the key without a prompt and makes a new one if it is dead, so a write never stores a value that can't be read. `biometryCurrentSetOrPasscode`: the Keystore ignores enrollment for a key that also takes the passcode, so the item keeps the biometry state of the moment it was written, as on iOS, and a read after a change is `KEY_INVALIDATED`. |
 
 An invalidated item never reads as `null`: an app must be able to tell "never stored" from "lost, sign in again".
 

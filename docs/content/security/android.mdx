@@ -65,7 +65,7 @@ A Keystore key that needs the user for decryption needs them for encryption too,
 | `biometryAny` | `AUTH_BIOMETRIC_STRONG`, `invalidatedByBiometricEnrollment = false` | `BIOMETRIC_STRONG` |
 | `biometryCurrentSet` | `AUTH_BIOMETRIC_STRONG`, `invalidatedByBiometricEnrollment = true` | `BIOMETRIC_STRONG` |
 | `biometryAnyOrPasscode` | `AUTH_BIOMETRIC_STRONG \| AUTH_DEVICE_CREDENTIAL`, not invalidated | `BIOMETRIC_STRONG \| DEVICE_CREDENTIAL` |
-| `biometryCurrentSetOrPasscode` | The same, invalidated by enrollment | The same |
+| `biometryCurrentSetOrPasscode` | The same, not invalidated: the Keystore ignores enrollment for a key that also takes the passcode, so the package stores the biometry state and ends the item itself | The same |
 | `passcode` | `AUTH_DEVICE_CREDENTIAL` | `DEVICE_CREDENTIAL` |
 
 The passcode options need API 30: before Android 11, `DEVICE_CREDENTIAL` doesn't work with a `CryptoObject`.
