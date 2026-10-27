@@ -38,13 +38,13 @@ The constants catch a typo at compile time and show every value in the editor's 
 | --- | --- | --- |
 | `afterFirstUnlock` (default) | From the first unlock after a restart, including in the background | A regular Keystore key: an app without direct boot doesn't start before the first unlock, so the meaning is the same |
 | `afterFirstUnlockThisDeviceOnly` | The same, and the item never moves to another device | The same as `afterFirstUnlock` |
-| `whenUnlocked` | Only while the device is unlocked | A key with `setUnlockedDeviceRequired(true)` on Android 9 (API 28) and newer; before, the package checks the lock itself |
+| `whenUnlocked` | Only while the device is unlocked | The package checks the lock itself, on every version; on Android 9 (API 28) and newer the key also has `setUnlockedDeviceRequired(true)` |
 | `whenUnlockedThisDeviceOnly` | The same, and the item never moves to another device | The same as `whenUnlocked` |
-| `whenPasscodeSetThisDeviceOnly` | While unlocked, and only while the device has a passcode | The write checks that the device is secure; a key with authentication is invalidated when the screen lock is removed |
+| `whenPasscodeSetThisDeviceOnly` | While unlocked, and only while the device has a passcode | The lock as with `whenUnlocked`; the write checks that the device is secure; a key with authentication is invalidated when the screen lock is removed |
 
 On iOS each value is the `kSecAttrAccessible` constant of the same name: `kSecAttrAccessibleAfterFirstUnlock`, `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and so on.
 
-The default is `afterFirstUnlock` because tokens are often read by background work: a silent push, a background fetch, a refresh timer. With `whenUnlocked*`, a read or a write while the device is locked fails with `INTERACTION_NOT_ALLOWED`.
+The default is `afterFirstUnlock` because tokens are often read by background work: a silent push, a background fetch, a refresh timer. With `whenUnlocked*` or `whenPasscodeSetThisDeviceOnly`, a read or a write while the device is locked fails with `INTERACTION_NOT_ALLOWED`, on both platforms.
 
 `ThisDeviceOnly` changes nothing on Android: Keystore keys never leave the device. On iOS it keeps the item out of iCloud Keychain and out of a backup restored to another device.
 
