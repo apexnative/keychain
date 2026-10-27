@@ -78,7 +78,7 @@
     "example": "yarn workspace @apexnative/keychain-example",
     "check:headers": "node scripts/check-license-headers.mjs",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
-    "prepare": "bob build && tsc -p plugin/tsconfig.build.json",
+    "prepare": "bob build --target module && bob build --target commonjs && bob build --target typescript && tsc -p plugin/tsconfig.build.json",
     "typecheck": "tsc && tsc -p plugin && yarn example typecheck",
     "lint": "eslint \"**/*.{js,mjs,ts,tsx}\"",
     "test": "jest"
