@@ -41,14 +41,14 @@ type Accessible = (typeof Accessible)[keyof typeof Accessible];
 | --- | --- | --- | --- |
 | `AfterFirstUnlock` | `'afterFirstUnlock'` | From the first unlock after a restart until the next restart, in the background too. The default | A Keystore key without a lock requirement; an app without direct boot doesn't run before the first unlock |
 | `AfterFirstUnlockThisDeviceOnly` | `'afterFirstUnlockThisDeviceOnly'` | The same, and the item stays on this device | The same as `afterFirstUnlock` |
-| `WhenUnlocked` | `'whenUnlocked'` | Only while the device is unlocked | A key with `setUnlockedDeviceRequired(true)` on Android 9+; before, the package checks the lock itself |
+| `WhenUnlocked` | `'whenUnlocked'` | Only while the device is unlocked | The package checks the lock itself, on every version; on Android 9+ the key also has `setUnlockedDeviceRequired(true)` |
 | `WhenUnlockedThisDeviceOnly` | `'whenUnlockedThisDeviceOnly'` | The same, and the item stays on this device | The same as `whenUnlocked` |
-| `WhenPasscodeSetThisDeviceOnly` | `'whenPasscodeSetThisDeviceOnly'` | Only while the device is unlocked and has a passcode. Removing the passcode makes the item unreadable | The write needs a secure device (`PASSCODE_NOT_SET` without one) |
+| `WhenPasscodeSetThisDeviceOnly` | `'whenPasscodeSetThisDeviceOnly'` | Only while the device is unlocked and has a passcode. Removing the passcode makes the item unreadable | The lock as with `whenUnlocked`; the write needs a secure device (`PASSCODE_NOT_SET` without one) |
 
 On iOS each value is the `kSecAttrAccessible…` constant of the same name.
 
 - **This device only.** The `…ThisDeviceOnly` values keep an item out of iCloud Keychain and out of an encrypted iOS backup restored on another device. On Android every item is this-device-only: Keystore keys never leave the device. An item with `synchronizable: true` can't have one of them (`INVALID_ARGUMENT`).
-- **A locked device.** A read or a write at a time the value doesn't allow fails with `INTERACTION_NOT_ALLOWED`. With `afterFirstUnlock`, background work such as a silent push or a background fetch can read the item once the phone has been unlocked after a restart; that is why it is the default.
+- **A locked device.** A read or a write at a time the value doesn't allow fails with [`INTERACTION_NOT_ALLOWED`](/docs/help/error-codes#interaction-not-allowed), on iOS and on Android alike. On Android the package checks the lock itself before it touches a key, on every version: the Keystore refuses such a key from Android 9 too, but each version says it in its own way. With `afterFirstUnlock`, background work such as a silent push or a background fetch can read the item once the phone has been unlocked after a restart; that is why it is the default.
 - **Not here.** iOS's `kSecAttrAccessibleAlways` is deprecated by Apple and has no value.
 
 ## See also {#see-also}

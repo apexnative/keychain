@@ -79,7 +79,7 @@ type KeychainErrorCode = (typeof KeychainErrorCode)[keyof typeof KeychainErrorCo
 
 | Constant | String | When |
 | --- | --- | --- |
-| `InteractionNotAllowed` | [`INTERACTION_NOT_ALLOWED`](/docs/help/error-codes#interaction-not-allowed) | The device is locked, or the app is in the background, and the item is `whenUnlocked*` |
+| `InteractionNotAllowed` | [`INTERACTION_NOT_ALLOWED`](/docs/help/error-codes#interaction-not-allowed) | The device is locked, and the item is `whenUnlocked*` or `whenPasscodeSetThisDeviceOnly`; on iOS also a prompt asked for in the background |
 | `AuthRequired` | [`AUTH_REQUIRED`](/docs/help/error-codes#auth-required) | A synchronous read of an item that needs a prompt |
 | `NoActivity` | [`NO_ACTIVITY`](/docs/help/error-codes#no-activity) | Android: no activity to show the prompt in |
 

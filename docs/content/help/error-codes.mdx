@@ -112,9 +112,9 @@ The stored data can't be decrypted or decoded, and it isn't an invalidation: the
 
 ### INTERACTION_NOT_ALLOWED {#interaction-not-allowed}
 
-The item can't be read or written in the device's state: a `whenUnlocked*` item while the device is locked, or the app is in the background. On iOS with `clearOnReinstall`, also any call before the first unlock after a restart, when the package can't yet tell a new installation.
+The item can't be read or written in the device's state. Mostly it is a `whenUnlocked*` or `whenPasscodeSetThisDeviceOnly` item while the device is locked: a read and a write fail, on iOS and on Android alike. On iOS also a prompt asked for while the app is in the background, and, with `clearOnReinstall`, any call before the first unlock after a restart, when the package can't yet tell a new installation.
 
-- iOS: `errSecInteractionNotAllowed`, `LAError.notInteractive`. Android: `UserNotAuthenticatedException` for a key that needs an unlocked device; before Android 9, the package's own check of the lock.
+- iOS: `errSecInteractionNotAllowed`, `LAError.notInteractive`. Android: the package's own check of the lock, made on every Android version before any key is touched. From Android 9 the Keystore refuses such a key too, but each version says it its own way (`UserNotAuthenticatedException`, or on Android 15 and newer an `InvalidKeyException` with keystore2's `LOCKED`); both come here as well.
 - **Do:** read it when the app is active, or store values that background work needs with `afterFirstUnlock`.
 
 ### AUTH_REQUIRED {#auth-required}
