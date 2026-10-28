@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { AccessControl, KeychainErrorCode } from '@apexnative/keychain';
 import type { Scenario } from '../harness/types';
 
@@ -7,7 +8,7 @@ export const lockout: Scenario = {
   manual: true,
   title: 'Lockout',
   description:
-    'Too many failed attempts lock the biometry: the read fails with LOCKOUT (or LOCKOUT_PERMANENT on Android), and says so instead of hanging.',
+    'Too many failed attempts lock the biometry: the read fails with LOCKOUT (or LOCKOUT_PERMANENT on Android), and says so instead of hanging. Android 16 and newer may take the user to the system PIN screen instead; leaving it is USER_CANCELED.',
   async run(t) {
     const store = await t.store('m2-lockout', { accessControl: AccessControl.BiometryAny });
     await store.setItem('secret', 'v');
@@ -20,9 +21,17 @@ export const lockout: Scenario = {
     } catch (error) {
       code = (error as { code?: string }).code ?? 'an error';
     }
+    // Android 16 and newer may hand the lockout to the system's PIN screen, and report leaving it as a cancel.
+    const systemPin = Platform.OS === 'android' && Number(Platform.Version) >= 36;
     t.oneOf(
       'the read after repeated failures',
-      [KeychainErrorCode.Lockout, KeychainErrorCode.LockoutPermanent],
+      systemPin
+        ? [
+            KeychainErrorCode.Lockout,
+            KeychainErrorCode.LockoutPermanent,
+            KeychainErrorCode.UserCanceled,
+          ]
+        : [KeychainErrorCode.Lockout, KeychainErrorCode.LockoutPermanent],
       code
     );
     await t.expect('the item is still there', true, () => store.hasItem('secret'));

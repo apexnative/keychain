@@ -142,7 +142,7 @@ const STEPS: Step[] = [
       ],
       android: [
         'Tap Start, then touch the sensor with a finger that isn’t enrolled, again and again, until the prompt says there were too many attempts.',
-        'If the phone then asks for your PIN to unlock the fingerprint, tap Cancel instead.',
+        'If the phone then asks for your PIN, don’t enter it: go back. Android 17 locks the phone then; unlock it and come back to the app. The read ends with USER_CANCELED there, which passes.',
       ],
     },
     after: {
