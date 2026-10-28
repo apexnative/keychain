@@ -12,6 +12,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { keychain } from '@apexnative/keychain';
 import { runScenario } from './harness/runner';
 import type { Run, Scenario } from './harness/types';
+import { DeviceCheck } from './deviceCheck/DeviceCheck';
 import { describeError } from './harness/values';
 import { ScenarioCard } from './ScenarioCard';
 import { scenarios } from './scenarios';
@@ -64,6 +65,7 @@ export function App() {
   const [status, setStatus] = useState<string[]>([]);
   const [runs, setRuns] = useState<Record<string, Run>>({});
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
   const scroll = useRef<ScrollView>(null);
   const offsets = useRef<Record<string, number>>({});
 
@@ -101,53 +103,69 @@ export function App() {
     <SafeAreaProvider>
       <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} />
       <SafeAreaView style={[styles.screen, { backgroundColor: theme.background }]}>
-        <ScrollView ref={scroll} contentContainerStyle={styles.content}>
-          <Text style={[styles.title, { color: theme.text }]}>@apexnative/keychain</Text>
-          <View testID="module-status">
-            {status.map((line) => (
-              <Text key={line} style={[styles.status, { color: theme.secondary }]}>
-                {line}
+        {checking ? (
+          <DeviceCheck theme={theme} onExit={() => setChecking(false)} />
+        ) : (
+          <ScrollView ref={scroll} contentContainerStyle={styles.content}>
+            <Text style={[styles.title, { color: theme.text }]}>@apexnative/keychain</Text>
+            <Pressable
+              testID="open-device-check"
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => setChecking(true)}
+              style={[styles.deviceCheck, busy && styles.off]}
+            >
+              <Text style={styles.deviceCheckTitle}>Device check →</Text>
+              <Text style={styles.deviceCheckText}>
+                Step by step through what a real phone has to prove: prompts, cancel, lockout.
               </Text>
-            ))}
-          </View>
-          <View style={styles.jumps}>
-            {sections.map((section) => (
-              <Pressable
-                key={section.milestone}
-                testID={`jump-to-${section.milestone.toLowerCase()}`}
-                accessibilityRole="button"
-                onPress={() =>
-                  scroll.current?.scrollTo({
-                    y: offsets.current[section.milestone] ?? 0,
-                    animated: false,
-                  })
-                }
-              >
-                <Text style={[styles.jump, { color: theme.secondary }]}>
-                  Jump to {section.milestone} ↓
+            </Pressable>
+            <View testID="module-status">
+              {status.map((line) => (
+                <Text key={line} style={[styles.status, { color: theme.secondary }]}>
+                  {line}
                 </Text>
-              </Pressable>
-            ))}
-          </View>
-          {scenarios.filter((scenario) => scenario.milestone === 'M1').map(card)}
-          {sections.map((section) => {
-            const drafts = section.cards.filter((scenario) => scenario.pending).length;
-            return (
-              <Fragment key={section.milestone}>
-                <Text
-                  style={[styles.section, { color: theme.text }]}
-                  onLayout={(event) => {
-                    offsets.current[section.milestone] = event.nativeEvent.layout.y;
-                  }}
+              ))}
+            </View>
+            <View style={styles.jumps}>
+              {sections.map((section) => (
+                <Pressable
+                  key={section.milestone}
+                  testID={`jump-to-${section.milestone.toLowerCase()}`}
+                  accessibilityRole="button"
+                  onPress={() =>
+                    scroll.current?.scrollTo({
+                      y: offsets.current[section.milestone] ?? 0,
+                      animated: false,
+                    })
+                  }
                 >
-                  {section.title}
-                  {drafts > 0 ? ` (${drafts} drafts)` : ''}
-                </Text>
-                {section.cards.map(card)}
-              </Fragment>
-            );
-          })}
-        </ScrollView>
+                  <Text style={[styles.jump, { color: theme.secondary }]}>
+                    Jump to {section.milestone} ↓
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {scenarios.filter((scenario) => scenario.milestone === 'M1').map(card)}
+            {sections.map((section) => {
+              const drafts = section.cards.filter((scenario) => scenario.pending).length;
+              return (
+                <Fragment key={section.milestone}>
+                  <Text
+                    style={[styles.section, { color: theme.text }]}
+                    onLayout={(event) => {
+                      offsets.current[section.milestone] = event.nativeEvent.layout.y;
+                    }}
+                  >
+                    {section.title}
+                    {drafts > 0 ? ` (${drafts} drafts)` : ''}
+                  </Text>
+                  {section.cards.map(card)}
+                </Fragment>
+              );
+            })}
+          </ScrollView>
+        )}
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -161,4 +179,8 @@ const styles = StyleSheet.create({
   section: { marginTop: 12, fontSize: 18, fontWeight: '600' },
   jumps: { flexDirection: 'row', gap: 16 },
   jump: { fontSize: 13, textDecorationLine: 'underline' },
+  deviceCheck: { borderRadius: 12, padding: 14, gap: 4, backgroundColor: '#457B9D' },
+  deviceCheckTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  deviceCheckText: { color: '#FFFFFF', fontSize: 13, opacity: 0.9 },
+  off: { opacity: 0.4 },
 });
