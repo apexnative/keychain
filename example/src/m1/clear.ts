@@ -18,14 +18,15 @@ export const clear: Scenario = {
     await t.expect('clear of an empty store resolves', undefined, () => store.clear());
 
     for (let index = 0; index < 20; index++) await store.setItem(`item${index}`, 'v');
-    await store.setBytes('bytes', Uint8Array.from([1, 2, 3]), { label: 'Label' });
+    await store.setBytes('bytes', Uint8Array.from([1, 2, 3]));
     await other.setItem('kept', 'still here');
 
     await t.expect('clear resolves', undefined, () => store.clear());
-    await t.expect('no keys after clear', [], () => store.getAllKeys());
-    await t.expect('hasItem after clear', false, () => store.hasItem('item0'));
+    await t.expect('hasItem after clear', [false, false, false], () =>
+      Promise.all([store.hasItem('item0'), store.hasItem('item19'), store.hasItem('bytes')])
+    );
     await t.expect('getItem after clear', null, () => store.getItem('item0'));
-    await t.expect('getItemInfo after clear', null, () => store.getItemInfo('bytes'));
+    await t.expect('getBytes after clear', null, () => store.getBytes('bytes'));
     await t.expect('another store keeps its items', 'still here', () => other.getItem('kept'));
     await t.expect('the default store keeps its items', 'default store', () =>
       keychain.getItem(MARKER)
@@ -39,6 +40,6 @@ export const clear: Scenario = {
       await store.clear();
       await store.clear();
     });
-    await t.expect('and the store is empty', [], () => store.getAllKeys());
+    await t.expect('and the store is empty', false, () => store.hasItem('item0'));
   },
 };

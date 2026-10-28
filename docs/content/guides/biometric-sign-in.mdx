@@ -77,7 +77,8 @@ export async function completeSignIn(tokens: Tokens, withBiometrics: boolean) {
   await session.setItem('accessToken', tokens.accessToken);
   if (!withBiometrics) return;
   try {
-    await vault.setItem('refreshToken', tokens.refreshToken, { label: tokens.username });
+    await vault.setItem('refreshToken', tokens.refreshToken);
+    await session.setItem('username', tokens.username);
   } catch (error) {
     // BIOMETRY_NOT_ENROLLED / PASSCODE_NOT_SET: the device changed since the check.
     if (error instanceof KeychainError) return turnOffBiometricSignIn();
@@ -86,7 +87,7 @@ export async function completeSignIn(tokens: Tokens, withBiometrics: boolean) {
 }
 ```
 
-The `label` keeps the username next to the item, outside the secret: the sign-in screen can say "Continue as ivan@example.com" with `vault.getItemInfo('refreshToken')`, before any prompt.
+The user name is not a secret, so it is its own item in the session store, without protection, next to the refresh token in the vault. The sign-in screen can say "Continue as ivan@example.com" with `session.getItem('username')`, before any prompt. Don't keep the name in the vault: a read there asks for Face ID.
 
 With SSO the flow is the same: the identity provider's sign-in gives the app its tokens, and the app stores them exactly like this. The biometrics never goes to the server; it only unlocks what the app already holds.
 
@@ -138,7 +139,6 @@ export async function unlockRefreshToken(): Promise<string | 'password' | 'signI
     if (!(error instanceof KeychainError)) throw error;
     switch (error.code) {
       case KeychainErrorCode.UserCanceled: // "Use password"
-      case KeychainErrorCode.UserFallback: // the fallback button on iOS
       case KeychainErrorCode.Lockout:
       case KeychainErrorCode.LockoutPermanent:
         return 'password';
@@ -162,6 +162,7 @@ export async function unlockRefreshToken(): Promise<string | 'password' | 'signI
 
 ```ts
 await session.removeItem('accessToken');
+await session.removeItem('username');
 await vault.clear(); // the refresh token, and on Android the vault's Keystore keys
 ```
 

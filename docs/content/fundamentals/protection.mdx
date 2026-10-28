@@ -133,11 +133,10 @@ The window is the package's own, and works the same on both platforms:
 
 | Field | iOS | Android |
 | --- | --- | --- |
-| `title` | `LAContext.localizedReason`: the reason the system shows with the prompt | The title of `BiometricPrompt` |
+| `title` | `LAContext.localizedReason`: the reason the system shows in the alert after a failed scan; Face ID that recognizes the user at once shows no text | The title of `BiometricPrompt` |
 | `subtitle` | — | The subtitle |
 | `description` | — | The description |
 | `cancel` | `localizedCancelTitle` | The negative button (only for options without a passcode: with one, the system shows its own button to enter it) |
-| `fallback` | `localizedFallbackTitle`, shown after a failed scan; `''` hides the button. A tap ends a read of `biometryAny` or `biometryCurrentSet` with `USER_FALLBACK`; for the others the fallback is the passcode | — |
 | `confirmationRequired` | — | Whether a passive biometric (a face) needs a tap to confirm; `true` by default |
 
 A field a platform doesn't have is ignored there, so one `prompt` works for both.
@@ -152,7 +151,7 @@ A field a platform doesn't have is ignored there, so one `prompt` works for both
 | `'strongbox'` | StrongBox, a separate secure chip, when the device has one; the TEE otherwise |
 | `'strongboxRequired'` | StrongBox; without it the write throws `HARDWARE_UNAVAILABLE` |
 
-The default is the TEE because StrongBox is markedly slower, and tokens are read at startup. `getItemInfo` reports where an item's key is (`android.securityLevel`), and `getHardwareSecurityLevel()` what the device offers. iOS protects keychain items with keys guarded by the Secure Enclave and ignores the option.
+The default is the TEE because StrongBox is markedly slower, and tokens are read at startup. `getHardwareSecurityLevel()` tells what the device offers. iOS protects keychain items with keys guarded by the Secure Enclave and ignores the option.
 
 ## iOS only {#ios-only}
 

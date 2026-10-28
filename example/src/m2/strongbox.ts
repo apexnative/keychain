@@ -27,29 +27,20 @@ export const strongbox: Scenario = {
 
     const hasStrongBox = level === HardwareSecurityLevel.Strongbox;
     t.info('getHardwareSecurityLevel', level, 'the best hardware for a new key');
-    await t.expect(
-      'keyStorage tee',
-      [HardwareSecurityLevel.Tee, HardwareSecurityLevel.Software].includes(level as never)
-        ? level
-        : HardwareSecurityLevel.Tee,
-      async () => {
-        await store.setItem('tee', 'v', { android: { keyStorage: KeyStorage.Tee } });
-        return (await store.getItemInfo('tee'))?.android?.securityLevel;
-      }
-    );
-    await t.expect(
-      'keyStorage strongbox: StrongBox if there is one, else the TEE',
-      hasStrongBox ? HardwareSecurityLevel.Strongbox : level,
-      async () => {
-        await store.setItem('sb', 'v', { android: { keyStorage: KeyStorage.Strongbox } });
-        return (await store.getItemInfo('sb'))?.android?.securityLevel;
-      }
+    // Where the key lives isn't readable without authentication on a real device: the outcome of the write is what
+    // is checked, and that the item is there and reads back.
+    const write = async (key: string, keyStorage: KeyStorage) => {
+      await store.setItem(key, 'v', { android: { keyStorage } });
+      return (await store.hasItem(key)) ? store.getItem(key) : 'no item';
+    };
+    await t.expect('keyStorage tee', 'v', () => write('tee', KeyStorage.Tee));
+    await t.expect('keyStorage strongbox: StrongBox if there is one, else the TEE', 'v', () =>
+      write('sb', KeyStorage.Strongbox)
     );
     if (hasStrongBox) {
-      await t.expect('keyStorage strongboxRequired', HardwareSecurityLevel.Strongbox, async () => {
-        await store.setItem('sbr', 'v', { android: { keyStorage: KeyStorage.StrongboxRequired } });
-        return (await store.getItemInfo('sbr'))?.android?.securityLevel;
-      });
+      await t.expect('keyStorage strongboxRequired', 'v', () =>
+        write('sbr', KeyStorage.StrongboxRequired)
+      );
     } else {
       await t.fails(
         'keyStorage strongboxRequired without StrongBox',

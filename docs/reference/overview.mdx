@@ -28,7 +28,6 @@ import { ApiHeader } from '@site/src/components/Api';
 | [`createKeychain`](/api/storage/createKeychain) | Function | A storage of its own service, with defaults for its calls |
 | [`Keychain`](/api/storage/methods) | Interface | The methods of a storage: strings, bytes, info, listing, sync calls, credentials |
 | [`SetOptions`](/api/storage/types#setoptions), [`GetOptions`](/api/storage/types#getoptions) | Types | The options of a write and of a read |
-| [`ItemInfo`](/api/storage/types#iteminfo) | Type | What `getItemInfo` reports without a prompt |
 | [`Credentials`](/api/storage/types#credentials), [`CredentialsOptions`](/api/storage/types#credentialsoptions) | Types | A username and a password, and the server they are for |
 
 ## Options {#options}
@@ -68,7 +67,7 @@ import { ApiHeader } from '@site/src/components/Api';
 
 - **Errors.** Every call fails with a `KeychainError`: an async method rejects, a sync method throws. A missing value is `null`, never an error. A method without a value resolves to `undefined`.
 - **Checks first.** Keys, values and options are checked in JavaScript before the native call, the same way on iOS and Android. A key that breaks the rules, a string with U+0000, an option with a wrong value, or an option name that doesn't exist throws `INVALID_ARGUMENT`.
-- **Prompts.** Only reads of a protected item (`getItem`, `getBytes`, `getCredentials`, and `migrateItem` of a protected old item) can show the system prompt. Writes, removals, `hasItem`, `getItemInfo`, `getAllKeys`, `clear`, the sync methods and the device functions never do.
+- **Prompts.** Only reads of a protected item (`getItem`, `getBytes`, `getCredentials`, and `migrateItem` of a protected old item) can show the system prompt. Writes, removals, `hasItem`, `clear`, the sync methods and the device functions never do.
 - **Never weaker.** An option means the same on both platforms. A device that can't give an item its protection fails the write; the item is never stored with less.
 - **Only its own items.** The package reads, lists and removes only the items it wrote; those of other libraries are moved by `/migrate`.
 - **Platforms.** Every export works on iOS and Android. On the web every call throws `UNSUPPORTED`; so does a call in an app without the native module (Expo Go, or an app not rebuilt after the install), with a message that says how to fix it. Importing the package never fails.

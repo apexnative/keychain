@@ -28,7 +28,7 @@ if (isKeychainError(error) && error.code === 'KEY_INVALIDATED') signInAgain(); /
 
 | Kind | Codes | Usually |
 | --- | --- | --- |
-| The prompt ended without success | `USER_CANCELED`, `USER_FALLBACK`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT` | Offer another way in; try again later |
+| The prompt ended without success | `USER_CANCELED`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT` | Offer another way in; try again later |
 | The device can't protect the item | `BIOMETRY_NOT_ENROLLED`, `BIOMETRY_NOT_AVAILABLE`, `PASSCODE_NOT_SET`, `HARDWARE_UNAVAILABLE`, `UNSUPPORTED` | Don't offer this protection; choose another |
 | The item is lost | `KEY_INVALIDATED` | Sign the user in again and store it anew |
 | Not now | `INTERACTION_NOT_ALLOWED`, `AUTH_REQUIRED`, `NO_ACTIVITY` | Read later, or with the async method |
@@ -51,7 +51,6 @@ async function readRefreshToken(): Promise<string | null> {
     if (!(error instanceof KeychainError)) throw error;
     switch (error.code) {
       case KeychainErrorCode.UserCanceled:
-      case KeychainErrorCode.UserFallback:
         return null; // show the password form
       case KeychainErrorCode.Lockout:
       case KeychainErrorCode.LockoutPermanent:
@@ -73,9 +72,9 @@ async function readRefreshToken(): Promise<string | null> {
 The package checks keys and options before it reaches the native side, the same way on both platforms, and throws `INVALID_ARGUMENT`:
 
 - an empty key or `service`, one longer than 256 characters, or one with U+0000;
-- a string value, a `label`, a username or a password with U+0000 or a lone surrogate (store such data with `setBytes`);
-- an empty username, or a `label` passed to `setCredentials`;
-- `getCredentials` of an item that has no label, because `setCredentials` didn't write it;
+- a string value, a username or a password with U+0000 or a lone surrogate (store such data with `setBytes`);
+- an empty username passed to `setCredentials`;
+- `getCredentials` of an item that has no username, because `setCredentials` didn't write it;
 - `getItem` of an item whose bytes aren't UTF-8 text (read it with `getBytes`);
 - on iOS, a write under a key that another library's item holds in the same service;
 - an option name that doesn't exist, such as a misspelt `acessControl`;

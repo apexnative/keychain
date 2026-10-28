@@ -7,14 +7,12 @@
  * only written, not yet run on a device, is `pending`: it is listed as a draft, and removing the flag enables it.
  * More are to come (reads in the background, clearOnReinstall, backup and restore on Android).
  */
-import { allKeys } from './m1/allKeys';
 import { authRequired } from './m1/authRequired';
 import { bytes } from './m1/bytes';
 import { clear } from './m1/clear';
 import { credentials } from './m1/credentials';
 import { errors } from './m1/errors';
 import { hasRemove } from './m1/hasRemove';
-import { info } from './m1/info';
 import { keys } from './m1/keys';
 import { nativeValidation } from './m1/nativeValidation';
 import { overwrite } from './m1/overwrite';
@@ -28,7 +26,7 @@ import { authValidity } from './m2/authValidity';
 import { availability } from './m2/availability';
 import { cancel } from './m2/cancel';
 import { device } from './m2/device';
-import { fallback } from './m2/fallback';
+import { noFallback } from './m2/noFallback';
 import { invalidation } from './m2/invalidation';
 import { lockout } from './m2/lockout';
 import { parallelReads } from './m2/parallelReads';
@@ -46,9 +44,7 @@ export const scenarios: Scenario[] = [
   strings,
   bytes,
   overwrite,
-  info,
   hasRemove,
-  allKeys,
   keys,
   clear,
   services,
@@ -62,7 +58,7 @@ export const scenarios: Scenario[] = [
   availability,
   prompt,
   cancel,
-  fallback,
+  noFallback,
   authValidity,
   invalidation,
   parallelReads,

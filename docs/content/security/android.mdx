@@ -39,7 +39,7 @@ The format, version 1:
 }
 ```
 
-`profile` is a hash of the key's parameters: the scheme, the `accessControl`, the `authValidity`, the hardware the key is in, and whether the device must be unlocked. Items of the same protection share a Keystore key; items of a different protection get another. A dead key is replaced by a new `generation`, never under its own alias, so the items of the old key read `KEY_INVALIDATED`. `sl` is where the key is, as `getItemInfo` reports it; `av`, the `authValidity`, is there when it isn't 0.
+`profile` is a hash of the key's parameters: the scheme, the `accessControl`, the `authValidity`, the hardware the key is in, and whether the device must be unlocked. Items of the same protection share a Keystore key; items of a different protection get another. A dead key is replaced by a new `generation`, never under its own alias, so the items of the old key read `KEY_INVALIDATED`. `sl` is where the key is; `av`, the `authValidity`, is there when it isn't 0.
 
 The names of the keys are in the clear in the file, inside the app's sandbox: don't put secrets in key names.
 
@@ -72,7 +72,7 @@ The passcode options need API 30: before Android 11, `DEVICE_CREDENTIAL` doesn't
 
 ## StrongBox {#strongbox}
 
-`android.keyStorage` picks the hardware of the key: `'tee'` by default; `'strongbox'` tries StrongBox and falls back to the TEE; `'strongboxRequired'` fails with `HARDWARE_UNAVAILABLE` without it. StrongBox is slower, which matters for tokens read at startup, so it isn't the default. `getItemInfo` reports where a key ended up.
+`android.keyStorage` picks the hardware of the key: `'tee'` by default; `'strongbox'` tries StrongBox and falls back to the TEE; `'strongboxRequired'` fails with `HARDWARE_UNAVAILABLE` without it. StrongBox is slower, which matters for tokens read at startup, so it isn't the default.
 
 ## Prompts and threads {#prompts}
 

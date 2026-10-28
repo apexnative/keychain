@@ -9,7 +9,7 @@ The comparison is based on the source code of `react-native-keychain` 10.0.0 and
 | --- | --- | --- | --- |
 | Data model | A username and a password per service | A string per key | A string or bytes per key, plus credentials |
 | Binary data | — | — | ✓ |
-| Listing / clearing | A list of services / reset of one service | — / — | `getAllKeys` / `clear` |
+| Checking / clearing | A list of services / reset of one service | — / — | `hasItem` / `clear` |
 | Sync API | — | ✓, can show a prompt and block JS | ✓, never shows a prompt |
 | Protection options | Seven flags on iOS; on Android `biometryAny` is the same as `currentSet` and the passcode is always allowed | One boolean | Six options, the same on both platforms |
 | Reuse of one prompt | Android: fixed at 5 seconds | — | `authValidity`, configurable |

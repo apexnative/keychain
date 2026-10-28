@@ -19,7 +19,7 @@ export const prompt: Scenario = {
       },
     });
     await t.expect('a write shows no prompt', true, async () => {
-      await store.setItem('secret', 'behind the lock', { label: 'Locked' });
+      await store.setItem('secret', 'behind the lock');
       return store.hasItem('secret');
     });
     t.note('A prompt appears now: authenticate. Its title is "Example: unlock the item".');

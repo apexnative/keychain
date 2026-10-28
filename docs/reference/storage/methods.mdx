@@ -1,6 +1,6 @@
 ---
 title: Keychain
-description: 'The methods of a storage: strings and bytes, what can be known without a prompt, listing and clearing, the synchronous calls, and credentials. The default keychain and every storage of createKeychain have them all.'
+description: 'The methods of a storage: strings and bytes, what can be done without a prompt, clearing, the synchronous calls, and credentials. The default keychain and every storage of createKeychain have them all.'
 hide_title: true
 ---
 
@@ -17,9 +17,8 @@ import { AccessControl, createKeychain, type Keychain } from '@apexnative/keycha
 
 export const vault = createKeychain({ service: 'vault', accessControl: AccessControl.BiometryCurrentSet });
 
-await vault.setItem('refreshToken', token, { label: 'ivan@example.com' }); // no prompt
+await vault.setItem('refreshToken', token); // no prompt
 await vault.hasItem('refreshToken'); // true, no prompt
-await vault.getItemInfo('refreshToken'); // { label: 'ivan@example.com', … }, no prompt
 await vault.getItem('refreshToken'); // the prompt, then the value
 
 export async function signOut(store: Keychain) {
@@ -42,8 +41,6 @@ interface Keychain {
   removeItem(key: string): Promise<void>;
 
   hasItem(key: string): Promise<boolean>;
-  getItemInfo(key: string): Promise<ItemInfo | null>;
-  getAllKeys(): Promise<string[]>;
   clear(): Promise<void>;
 
   getItemSync(key: string): string | null;
@@ -53,7 +50,7 @@ interface Keychain {
 
   setCredentials(
     credentials: Credentials,
-    options?: Omit<SetOptions, 'label'> & CredentialsOptions
+    options?: SetOptions & CredentialsOptions
   ): Promise<void>;
   getCredentials(options?: GetOptions & CredentialsOptions): Promise<Credentials | null>;
   removeCredentials(options?: CredentialsOptions): Promise<void>;
@@ -84,11 +81,11 @@ setItem(key: string, value: string, options?: SetOptions): Promise<void>;
   items={[
     { name: 'key', type: 'string', required: true, text: 'The name of the item in the storage.' },
     { name: 'value', type: 'string', required: true, text: 'Any text, the empty string too, without U+0000 and without a lone surrogate. Binary data goes through [`setBytes`](#setBytes).' },
-    { name: 'options', type: 'SetOptions', text: 'The protection of this item and its `label`, over the storage\'s defaults. See [SetOptions](./types#setoptions).' },
+    { name: 'options', type: 'SetOptions', text: 'The protection of this item, over the storage\'s defaults. See [SetOptions](./types#setoptions).' },
   ]}
 />
 
-Stores a string, kept as UTF-8, and replaces the item under the key: the value, the protection and the label together. The write is atomic: when the new item can't be stored, the old one stays.
+Stores a string, kept as UTF-8, and replaces the item under the key: the value and the protection together. The write is atomic: when the new item can't be stored, the old one stays.
 
 ```ts
 import { AccessControl, keychain } from '@apexnative/keychain';
@@ -96,12 +93,10 @@ import { AccessControl, keychain } from '@apexnative/keychain';
 await keychain.setItem('accessToken', token);
 await keychain.setItem('refreshToken', refreshToken, {
   accessControl: AccessControl.BiometryCurrentSet,
-  label: 'ivan@example.com',
 });
 ```
 
 - **The protection is never lowered.** When the device can't give the item its `accessControl`, the write fails with a code that says why, and nothing is stored with less: `BIOMETRY_NOT_ENROLLED` (also for `biometryCurrentSetOrPasscode`: the passcode doesn't make up for the missing biometrics), `BIOMETRY_NOT_AVAILABLE`, `PASSCODE_NOT_SET`, `UNSUPPORTED` (a passcode option, or `authValidity`, before Android 11), `MISSING_USAGE_DESCRIPTION` (iOS: a biometric option without `NSFaceIDUsageDescription`), `HARDWARE_UNAVAILABLE` (`strongboxRequired` without StrongBox).
-- **The label goes with every write.** A write without `label` removes the label the item had; `''` is a label.
 - **Only its own items.** On iOS an item of another library with the same service and key (react-native-keychain, expo-secure-store) isn't overwritten: the write fails with `INVALID_ARGUMENT`. Use another key, or move the old item with [`/migrate`](/api/migrate/migrateFromReactNativeKeychain) first.
 - **Locked device.** A write of a `whenUnlocked*` or `whenPasscodeSetThisDeviceOnly` item while the device is locked fails with `INTERACTION_NOT_ALLOWED`.
 
@@ -111,7 +106,7 @@ await keychain.setItem('refreshToken', refreshToken, {
 getItem(key: string, options?: GetOptions): Promise<string | null>;
 ```
 
-<Facts returns="Promise<string | null>" prompt="When the item has an `accessControl`" throws="The prompt's codes (`USER_CANCELED`, `USER_FALLBACK`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT`); `KEY_INVALIDATED`; `INTERACTION_NOT_ALLOWED`; `NO_ACTIVITY`; `MISSING_USAGE_DESCRIPTION`; `INVALID_ARGUMENT`; `DATA_CORRUPTED`" />
+<Facts returns="Promise<string | null>" prompt="When the item has an `accessControl`" throws="The prompt's codes (`USER_CANCELED`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT`); `KEY_INVALIDATED`; `INTERACTION_NOT_ALLOWED`; `NO_ACTIVITY`; `MISSING_USAGE_DESCRIPTION`; `INVALID_ARGUMENT`; `DATA_CORRUPTED`" />
 
 <Params
   items={[
@@ -193,7 +188,7 @@ await keychain.removeItem('accessToken');
 
 ## Without a prompt {#info-group}
 
-These methods read what is stored about the items, never their values, and never show a prompt, whatever protects the items.
+These methods never read the values of the items and never show a prompt, whatever protects the items.
 
 ### `hasItem` {#hasItem}
 
@@ -208,47 +203,6 @@ Whether there is an item under the key. Use it to choose between the sign-in scr
 ```ts
 if (await vault.hasItem('refreshToken')) showUnlockWithFaceId();
 else showSignIn();
-```
-
-### `getItemInfo` {#getItemInfo}
-
-```ts
-getItemInfo(key: string): Promise<ItemInfo | null>;
-```
-
-<Facts returns="Promise<ItemInfo | null>" prompt="Never" throws="`INVALID_ARGUMENT` for a key that isn't valid" />
-
-What the item is and how it is protected, or `null` when there is no item: its key, its label, its `accessible` and `accessControl`, whether it is in iCloud Keychain, when it was written, and on Android where its key lives. See [ItemInfo](./types#iteminfo).
-
-```ts
-const info = await vault.getItemInfo('refreshToken');
-// {
-//   key: 'refreshToken',
-//   label: 'ivan@example.com',
-//   accessible: 'whenUnlockedThisDeviceOnly',
-//   accessControl: 'biometryCurrentSet',
-//   synchronizable: false,
-//   createdAt: 1730000000000,
-//   modifiedAt: 1730000000000,
-//   android: { securityLevel: 'tee' }, // Android only
-// }
-if (info) showContinueAs(info.label);
-```
-
-The label is the one thing an app may show before the prompt: "Continue as ivan@example.com".
-
-### `getAllKeys` {#getAllKeys}
-
-```ts
-getAllKeys(): Promise<string[]>;
-```
-
-<Facts returns="Promise<string[]>" prompt="Never" />
-
-The keys of every item of the storage, sorted. Only the package's own items: on iOS the items of other libraries under the same service aren't listed. Credentials are listed under their keys, `credentials` and `credentials:<server>`.
-
-```ts
-await vault.getAllKeys(); // ['credentials', 'pin', 'refreshToken']
 ```
 
 ### `clear` {#clear}
@@ -322,23 +276,23 @@ Deletes the item; a key with no item is no error.
 
 ## Credentials {#credentials-group}
 
-A username and a password, kept as one item: the password is the value, the username its label. `getItemInfo` shows the username without a prompt. See [Credentials](/docs/fundamentals/storage-model#credentials).
+A username and a password, kept as one item: the password and the username are kept together, and `getCredentials` returns both, after the prompt for a protected item. See [Credentials](/docs/fundamentals/storage-model#credentials).
 
 ### `setCredentials` {#setCredentials}
 
 ```ts
 setCredentials(
   credentials: Credentials,
-  options?: Omit<SetOptions, 'label'> & CredentialsOptions
+  options?: SetOptions & CredentialsOptions
 ): Promise<void>;
 ```
 
-<Facts returns="Promise<void>" prompt="Never" throws="As [`setItem`](#setItem); `INVALID_ARGUMENT` for an empty username or a `label` option" />
+<Facts returns="Promise<void>" prompt="Never" throws="As [`setItem`](#setItem); `INVALID_ARGUMENT` for an empty username" />
 
 <Params
   items={[
     { name: 'credentials', type: 'Credentials', required: true, text: '`{ username, password }`. The username can\'t be empty; the password can. Neither can hold U+0000.' },
-    { name: 'options', type: 'SetOptions & CredentialsOptions', text: 'The protection of the item, without `label` (the label is the username), and the `server` the credentials are for.' },
+    { name: 'options', type: 'SetOptions & CredentialsOptions', text: 'The protection of the item, and the `server` the credentials are for.' },
   ]}
 />
 
@@ -360,9 +314,9 @@ The keys are ordinary keys of the storage: `setItem('credentials', …)` would r
 getCredentials(options?: GetOptions & CredentialsOptions): Promise<Credentials | null>;
 ```
 
-<Facts returns="Promise<Credentials | null>" prompt="When the item has an `accessControl`" throws="As [`getItem`](#getItem); `INVALID_ARGUMENT` for an item that has no label" />
+<Facts returns="Promise<Credentials | null>" prompt="When the item has an `accessControl`" throws="As [`getItem`](#getItem); `INVALID_ARGUMENT` for an item that has no username" />
 
-Reads the credentials of the app, or of the `server`, or `null`. An item under that key that wasn't written by `setCredentials`, and so has no label, fails with `INVALID_ARGUMENT` rather than make up a username.
+Reads the credentials of the app, or of the `server`, or `null`. An item under that key that wasn't written by `setCredentials`, and so has no username, fails with `INVALID_ARGUMENT` rather than make up a username.
 
 ```ts
 const credentials = await vault.getCredentials(); // { username, password } | null
@@ -387,8 +341,8 @@ await vault.removeCredentials({ server: 'api.example.com' });
 
 <SeeAlso
   items={[
-    { name: 'SetOptions, GetOptions, ItemInfo', text: 'The types the methods take and return.', to: '/api/storage/types' },
-    { name: 'Storage model', text: 'Services, values, labels and credentials, explained.', to: '/docs/fundamentals/storage-model' },
+    { name: 'SetOptions, GetOptions', text: 'The types the methods take and return.', to: '/api/storage/types' },
+    { name: 'Storage model', text: 'Services, values and credentials, explained.', to: '/docs/fundamentals/storage-model' },
     { name: 'Error codes', text: 'Every code a method can fail with, and what to do.', to: '/docs/help/error-codes' },
   ]}
 />

@@ -39,7 +39,7 @@ There are no items of a separate format: a password from the layer is the creden
 
 | rnk | In this package |
 | --- | --- |
-| A generic password of the app's default service (no `service`) | The credentials of the default store, [`keychain`](/api/storage/keychain): the item `credentials`, the user name its label |
+| A generic password of the app's default service (no `service`) | The credentials of the default store, [`keychain`](/api/storage/keychain): the item `credentials`, the user name kept with the password |
 | A generic password of the service `S` | The credentials of the store `createKeychain({ service: 'S' })` |
 | Internet credentials of the server `X` | The credentials with `server: 'X'` in the default store: the item `credentials:X` |
 | The same with `accessGroup` | The same, in the store of that access group |
@@ -54,7 +54,6 @@ import * as Keychain from '@apexnative/keychain/compat';
 
 await Keychain.setGenericPassword('ivan', 'secret');
 await keychain.getCredentials(); // { username: 'ivan', password: 'secret' }
-await keychain.getItemInfo('credentials'); // { key: 'credentials', label: 'ivan', … }
 ```
 
 **The list of services.** The package can't list every store on the device, so [`getAllGenericPasswordServices`](./generic-passwords#getAllGenericPasswordServices) reads a list of its own: the item `generic-services` in the store `apexnative.keychain.compat`. `setGenericPassword` and `migrate` add a service to it, and `resetGenericPassword` removes it. The default service is never in the list, and the default store gets no item of it.

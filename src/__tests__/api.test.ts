@@ -99,7 +99,6 @@ describe('the default store', () => {
     const { api } = setup();
     await expect(api.keychain.getItem('missing')).resolves.toBeNull();
     await expect(api.keychain.getBytes('missing')).resolves.toBeNull();
-    await expect(api.keychain.getItemInfo('missing')).resolves.toBeNull();
     await expect(api.keychain.getCredentials()).resolves.toBeNull();
     expect(api.keychain.getItemSync('missing')).toBeNull();
   });
@@ -143,12 +142,11 @@ describe('a store of createKeychain', () => {
   it("lets a call's options override the store's", async () => {
     const { native, api } = setup();
     const vault = api.createKeychain({ accessControl: 'biometryAny', authValidity: 30 });
-    await vault.setItem('a', '1', { accessControl: 'passcode', label: 'A' });
+    await vault.setItem('a', '1', { accessControl: 'passcode' });
     expect(native.setItem.mock.calls[0]![4]).toEqual({
       ...DEFAULT_WRITE,
       accessControl: 'passcode',
       authValidity: 30,
-      label: 'A',
     });
   });
 
@@ -242,8 +240,6 @@ describe('keys and values', () => {
     const cases: Array<() => unknown> = [
       () => api.keychain.setItem('key', nul),
       () => api.keychain.setItemSync('key', nul),
-      () => api.keychain.setItem('key', 'v', { label: nul }),
-      () => api.keychain.setItemSync('key', 'v', { label: nul }),
       () => api.keychain.setCredentials({ username: nul, password: 'p' }),
       () => api.keychain.setCredentials({ username: 'u', password: nul }),
     ];
@@ -258,26 +254,6 @@ describe('keys and values', () => {
 
     await api.keychain.setBytes('key', Uint8Array.from([0x61, 0, 0x62]));
     expect(native.setItem.mock.calls[0]!.slice(1, 4)).toEqual(['key', 'YQBi', 'base64']);
-  });
-
-  it('keeps the empty label as a label', async () => {
-    const { native, api } = setup();
-    await api.keychain.setItem('a', 'v', { label: '' });
-    await api.keychain.setItem('b', 'v');
-    expect(native.setItem.mock.calls[0]![4].label).toBe('');
-    expect(native.setItem.mock.calls[1]![4]).not.toHaveProperty('label');
-
-    const info: Native.ItemInfo = {
-      key: 'a',
-      label: '',
-      accessible: 'afterFirstUnlock',
-      accessControl: 'none',
-      synchronizable: false,
-      createdAt: 1,
-      modifiedAt: 1,
-    };
-    native.getItemInfo.mockResolvedValueOnce(info);
-    expect(await api.keychain.getItemInfo('a')).toHaveProperty('label', '');
   });
 
   it('checks the service', () => {
@@ -298,7 +274,7 @@ describe('options', () => {
     [{ synchronizable: 'yes' }, 'Invalid synchronizable'],
     [{ android: { keyStorage: 'hsm' } }, 'Invalid android.keyStorage'],
     [{ android: { strongbox: true } }, "unknown option 'strongbox'"],
-    [{ label: 42 }, 'Invalid label'],
+    [{ label: 'x' }, "unknown option 'label'"],
     ['fast', 'expected an object'],
   ])('rejects %p', async (options, message) => {
     const { native, api } = setup();
@@ -427,42 +403,9 @@ describe('answers of the native side', () => {
     native.getBiometryState.mockResolvedValueOnce(undefined as never);
     native.getHardwareSecurityLevel.mockResolvedValueOnce(undefined as never);
     native.getItem.mockResolvedValueOnce(undefined as never);
-    native.getItemInfo.mockResolvedValueOnce(undefined as never);
     await expect(api.getBiometryState()).resolves.toBeNull();
     await expect(api.getHardwareSecurityLevel()).resolves.toBeNull();
     await expect(api.keychain.getItem('a')).resolves.toBeNull();
-    await expect(api.keychain.getItemInfo('a')).resolves.toBeNull();
-  });
-
-  it('sorts the keys', async () => {
-    const { native, api } = setup();
-    native.getAllKeys.mockResolvedValueOnce(['b', 'a', 'C']);
-    await expect(api.keychain.getAllKeys()).resolves.toEqual(['C', 'a', 'b']);
-  });
-
-  it('makes the item info public', async () => {
-    const { native, api } = setup();
-    const info: Native.ItemInfo = {
-      key: 'a',
-      label: 'L',
-      accessible: 'whenUnlocked',
-      accessControl: 'biometryAny',
-      synchronizable: false,
-      createdAt: 1,
-      modifiedAt: 2,
-      securityLevel: 'strongbox',
-    };
-    native.getItemInfo.mockResolvedValueOnce(info);
-    await expect(api.keychain.getItemInfo('a')).resolves.toEqual({
-      key: 'a',
-      label: 'L',
-      accessible: 'whenUnlocked',
-      accessControl: 'biometryAny',
-      synchronizable: false,
-      createdAt: 1,
-      modifiedAt: 2,
-      android: { securityLevel: 'strongbox' },
-    });
   });
 
   it('answer the sync methods', () => {
@@ -471,11 +414,13 @@ describe('answers of the native side', () => {
     native.hasItemSync.mockReturnValueOnce({ value: true });
     expect(api.keychain.getItemSync('a')).toBe('v');
     expect(api.keychain.hasItemSync('a')).toBe(true);
-    api.keychain.setItemSync('a', 'v', { label: 'L' });
-    expect(native.setItemSync).toHaveBeenCalledWith({ service: 'com.example.app' }, 'a', 'v', {
-      ...DEFAULT_WRITE,
-      label: 'L',
-    });
+    api.keychain.setItemSync('a', 'v');
+    expect(native.setItemSync).toHaveBeenCalledWith(
+      { service: 'com.example.app' },
+      'a',
+      'v',
+      DEFAULT_WRITE
+    );
   });
 });
 

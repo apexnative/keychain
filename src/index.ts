@@ -99,7 +99,6 @@ export type {
   Credentials,
   CredentialsOptions,
   GetOptions,
-  ItemInfo,
   Keychain,
   KeychainOptions,
   Prompt,

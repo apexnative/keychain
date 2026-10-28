@@ -69,7 +69,7 @@ type MockDevice = {
     { name: 'passcodeSet', type: 'boolean', default: 'true', text: 'Whether the device has a passcode: what `isPasscodeSet` returns. Without it every access control is `passcodeNotSet`, and `whenPasscodeSetThisDeviceOnly` can\'t be written.' },
     { name: 'faceIDUsageDescription', type: 'boolean', default: 'true', text: 'iOS: whether the app has `NSFaceIDUsageDescription` in its Info.plist. Without it, on a device with `faceID`, a biometric write and `canUseAccessControl` for a biometric access control reject with `MISSING_USAGE_DESCRIPTION`.' },
     { name: 'androidApi', type: 'number | null', default: 'null', text: 'Android: the API level. `null` is a device that isn\'t an Android one. Below 30 the passcode variants are `unsupportedOS`, and a write with one, or with `authValidity` above 0, rejects with `UNSUPPORTED`.' },
-    { name: 'hardwareSecurityLevel', type: 'HardwareSecurityLevel | null', default: 'null', text: 'Android: the best hardware a new key can live in, what `getHardwareSecurityLevel` returns. `null` is iOS, where `keyStorage` means nothing. With a level, `getItemInfo` reports `android.securityLevel`: `tee` stays in the TEE even with StrongBox, `strongbox` falls back to the TEE, and `strongboxRequired` rejects with `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.' },
+    { name: 'hardwareSecurityLevel', type: 'HardwareSecurityLevel | null', default: 'null', text: 'Android: the best hardware a new key can live in, what `getHardwareSecurityLevel` returns. `null` is iOS, where `keyStorage` means nothing. With a level, `tee` stays in the TEE even with StrongBox, `strongbox` falls back to the TEE, and `strongboxRequired` rejects with `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.' },
   ]}
 />
 
@@ -84,7 +84,6 @@ type MockPrompt = {
   subtitle?: string;
   description?: string;
   cancel?: string;
-  fallback?: string;
   confirmationRequired: boolean;
 };
 ```
@@ -93,7 +92,7 @@ type MockPrompt = {
   label="Field"
   items={[
     { name: 'key', type: 'string', text: 'The key of the item the prompt was for. For an old item that `migrateItem` read: the user name of react-native-keychain, the key of expo-secure-store.' },
-    { name: 'title, subtitle, description, cancel, fallback', type: 'string', text: 'The texts of the prompt: the store\'s [`prompt`](/api/options/KeychainOptions#prompt) and the call\'s, merged field by field. A text neither of them set is missing.' },
+    { name: 'title, subtitle, description, cancel', type: 'string', text: 'The texts of the prompt: the store\'s [`prompt`](/api/options/KeychainOptions#prompt) and the call\'s, merged field by field. A text neither of them set is missing.' },
     { name: 'confirmationRequired', type: 'boolean', text: 'Always there: the call\'s, the store\'s, or `true`.' },
   ]}
 />

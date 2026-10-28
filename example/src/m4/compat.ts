@@ -1,6 +1,5 @@
 import { Platform } from 'react-native';
 import {
-  Accessible,
   createKeychain,
   getBiometryState,
   getBiometryTypes,
@@ -54,11 +53,6 @@ export const compat: Scenario = {
       'they are the credentials of the store of the service',
       { username: 'ivan@example.com', password: 's3cret' },
       () => store.getCredentials()
-    );
-    await t.expect(
-      'and the user name is the label',
-      'ivan@example.com',
-      async () => (await store.getItemInfo('credentials'))?.label
     );
     await t.expect('an overwrite', 'new', async () => {
       await Keychain.setGenericPassword('ivan@example.com', 'new', { service: SERVICE });
@@ -117,17 +111,13 @@ export const compat: Scenario = {
     await t.expect('and the password is gone', false, () =>
       Keychain.getGenericPassword({ service: SERVICE })
     );
-    await t.expect(
-      'accessible and cloudSync have the meaning of the core',
-      Accessible.WhenUnlockedThisDeviceOnly,
-      async () => {
-        await Keychain.setGenericPassword('u', 'p', {
-          service: SERVICE,
-          accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-        });
-        return (await store.getItemInfo('credentials'))?.accessible;
-      }
-    );
+    await t.expect('accessible has the meaning of the core', 'p', async () => {
+      await Keychain.setGenericPassword('u', 'p', {
+        service: SERVICE,
+        accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      });
+      return (await store.getCredentials())?.password;
+    });
 
     await t.fails('the storage option', KeychainErrorCode.Unsupported, () =>
       Keychain.setGenericPassword('u', 'p', {

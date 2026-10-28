@@ -89,7 +89,7 @@ A field of the device decides several answers at once, as on a phone:
 - `passcodeSet: false` — every `accessControl` but `none` is `passcodeNotSet`, and a write with one of them, or with `whenPasscodeSetThisDeviceOnly`, throws `PASSCODE_NOT_SET`.
 - `faceIDUsageDescription: false` — on a device with `faceID`, a biometric write and `canUseAccessControl` for a biometric `accessControl` reject with `MISSING_USAGE_DESCRIPTION`.
 - `androidApi` below 30 — the passcode variants are `unsupportedOS`, and a write with one of them, or with `authValidity` above 0, throws `UNSUPPORTED`.
-- `hardwareSecurityLevel` — `getItemInfo` reports `android.securityLevel` for new items, and `strongboxRequired` throws `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.
+- `hardwareSecurityLevel` — what `getHardwareSecurityLevel` returns, and `strongboxRequired` throws `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.
 
 ## failNextAuthentication {#failNextAuthentication}
 
@@ -108,7 +108,7 @@ await vault.getItem('refreshToken'); // rejects: LOCKOUT
 await vault.getItem('refreshToken'); // 'r-1'
 ```
 
-- The code is any [`KeychainErrorCode`](/api/errors/KeychainErrorCode), as a constant or a string; anything else throws a `TypeError` at once. The ones a prompt ends with on a device are `USER_CANCELED`, `USER_FALLBACK`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT` and `KEY_INVALIDATED`.
+- The code is any [`KeychainErrorCode`](/api/errors/KeychainErrorCode), as a constant or a string; anything else throws a `TypeError` at once. The ones a prompt ends with on a device are `USER_CANCELED`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT` and `KEY_INVALIDATED`.
 - `KEY_INVALIDATED` also deletes the item, as the device does.
 - Only a prompt takes a failure from the queue: writes, reads of items without protection and the device functions leave it for the next prompt. That includes the prompt of [`migrateItem`](/api/migrate/migrateItem) for a protected old item.
 
@@ -157,7 +157,7 @@ keychainMock.prompts();
 // [{ key: 'pin', title: 'Confirm the payment', cancel: 'Use password', confirmationRequired: true }]
 ```
 
-What never shows a prompt on a device records nothing: writes, `hasItem`, `getItemInfo`, `getAllKeys`, `clear`, reads of items without protection, and a read that throws `KEY_INVALIDATED` after [`changeBiometry`](#changeBiometry). The prompt of `migrateItem` for a protected old item is recorded with the old item's account as `key`: the user name of react-native-keychain, the key of expo-secure-store.
+What never shows a prompt on a device records nothing: writes, `hasItem`, `clear`, reads of items without protection, and a read that throws `KEY_INVALIDATED` after [`changeBiometry`](#changeBiometry). The prompt of `migrateItem` for a protected old item is recorded with the old item's account as `key`: the user name of react-native-keychain, the key of expo-secure-store.
 
 The array is a copy: changing it changes nothing in the mock.
 

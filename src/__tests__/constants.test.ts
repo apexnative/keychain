@@ -140,20 +140,13 @@ describe('a constant and its string', () => {
     } as const;
     await keychain.setItem('constants', 'v', options);
     await keychain.setItem('strings', 'v', strings);
-    const [fromConstants, fromStrings] = await Promise.all([
-      keychain.getItemInfo('constants'),
-      keychain.getItemInfo('strings'),
-    ]);
-    expect({ ...fromConstants, key: '', createdAt: 0, modifiedAt: 0 }).toEqual({
-      ...fromStrings,
-      key: '',
-      createdAt: 0,
-      modifiedAt: 0,
-    });
-    expect(fromConstants).toMatchObject({
-      accessible: 'whenUnlockedThisDeviceOnly',
-      accessControl: 'biometryAny',
-    });
+    // Both are protected alike: a synchronous read refuses without a prompt.
+    for (const key of ['constants', 'strings']) {
+      await expect(keychain.hasItem(key)).resolves.toBe(true);
+      expect(() => keychain.getItemSync(key)).toThrow(
+        expect.objectContaining({ code: KeychainErrorCode.AuthRequired })
+      );
+    }
     expect(() =>
       createKeychain({ accessControl: AccessControl.BiometryCurrentSet, authValidity: 5 })
     ).toThrow(KeychainError);
@@ -180,8 +173,6 @@ describe('a constant and its string', () => {
     await expect(getBiometryTypes()).resolves.toEqual(['fingerprint', 'face']);
     await expect(getHardwareSecurityLevel()).resolves.toBe('strongbox');
     await keychain.setItem('a', 'v', { android: { keyStorage: KeyStorage.Strongbox } });
-    await expect(keychain.getItemInfo('a')).resolves.toMatchObject({
-      android: { securityLevel: HardwareSecurityLevel.Strongbox },
-    });
+    await expect(keychain.hasItem('a')).resolves.toBe(true);
   });
 });

@@ -60,7 +60,13 @@ export const migrateEmpty: Scenario = {
           { into }
         )
     );
-    await t.expect('nothing was written', [], () => into.getAllKeys());
+    await t.expect('nothing was written', [false, false, false], () =>
+      Promise.all([
+        into.hasItem('credentials'),
+        into.hasItem(`credentials:${ABSENT}`),
+        into.hasItem('nothing'),
+      ])
+    );
 
     await t.fails('an option migrate does not know', KeychainErrorCode.InvalidArgument, () =>
       migrateFromReactNativeKeychain({ servises: [ABSENT] } as never)
@@ -264,10 +270,8 @@ export const migrateProtected: Scenario = {
           )
         ).migrated
     );
-    await t.expect(
-      'the new item is protected, with the user name in the open',
-      AccessControl.BiometryAny,
-      async () => (await store.getItemInfo('credentials'))?.accessControl
+    await t.fails('the new item is protected', KeychainErrorCode.AuthRequired, () =>
+      store.getItemSync('credentials')
     );
     await t.expect('and the old one is gone', false, () => rnk.hasGeneric(PROTECTED));
   },

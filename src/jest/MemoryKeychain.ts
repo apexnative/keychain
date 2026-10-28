@@ -31,8 +31,7 @@ export type MockDevice = {
   androidApi: number | null;
   /**
    * What `getHardwareSecurityLevel` reports: the best hardware a new key can live in. Defaults to `null`, as on iOS,
-   * where `keyStorage` means nothing. With a level the device is an Android one: `getItemInfo` reports where each
-   * item's key lives (`tee` stays in the TEE even where there is StrongBox, `strongbox` falls back to the TEE) and
+   * where `keyStorage` means nothing. With a level the device is an Android one:
    * `strongboxRequired` rejects with `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.
    */
   hardwareSecurityLevel: HardwareSecurityLevel | null;

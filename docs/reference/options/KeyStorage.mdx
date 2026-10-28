@@ -43,7 +43,7 @@ type KeyStorage = (typeof KeyStorage)[keyof typeof KeyStorage];
 | `Strongbox` | `'strongbox'` | StrongBox, a separate secure chip, when the device has one; the TEE otherwise |
 | `StrongboxRequired` | `'strongboxRequired'` | StrongBox; a write on a device without it throws `HARDWARE_UNAVAILABLE` |
 
-The default is the TEE because StrongBox is markedly slower, and tokens are often read at startup. Where an item's key ended up is in [`getItemInfo`](/api/storage/methods#getItemInfo) as `android.securityLevel`; what the device offers, in [`getHardwareSecurityLevel`](/api/device/getHardwareSecurityLevel). An emulator or a device without secure hardware keeps keys in software whatever the option says, and reports `'software'`.
+The default is the TEE because StrongBox is markedly slower, and tokens are often read at startup. What the device offers is in [`getHardwareSecurityLevel`](/api/device/getHardwareSecurityLevel). An emulator or a device without secure hardware keeps keys in software whatever the option says, and reports `'software'`.
 
 iOS protects Keychain items with keys of the Secure Enclave and has no choice to make: it ignores the option.
 

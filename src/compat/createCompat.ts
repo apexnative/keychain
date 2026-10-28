@@ -147,7 +147,7 @@ export function createCompat(api: Api) {
   const writeOptions = async (
     options: SetOptions,
     server: string | undefined
-  ): Promise<Omit<CoreSetOptions, 'label'> & { server?: string }> => {
+  ): Promise<CoreSetOptions & { server?: string }> => {
     if (options.storage !== undefined) {
       throw unsupported(
         'the storage option',
@@ -162,7 +162,7 @@ export function createCompat(api: Api) {
         );
       }
     }
-    const result: Omit<CoreSetOptions, 'label'> & { server?: string } = {};
+    const result: CoreSetOptions & { server?: string } = {};
     const accessible = mapAccessible(options.accessible);
     const accessControl = mapAccessControl(options.accessControl);
     if (accessible !== undefined) result.accessible = accessible;

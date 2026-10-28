@@ -19,8 +19,6 @@ export type Prompt = {
   description?: string;
   /** The cancel button. iOS: `localizedCancelTitle`; Android: the negative button, when there is no passcode fallback. */
   cancel?: string;
-  /** iOS only: the fallback button, `localizedFallbackTitle`; `''` hides it. */
-  fallback?: string;
   /** Android only: whether a face match needs a tap to confirm. Defaults to `true`. */
   confirmationRequired?: boolean;
 };
@@ -67,13 +65,7 @@ export type KeychainOptions = {
 export type SetOptions = Pick<
   KeychainOptions,
   'accessible' | 'accessControl' | 'authValidity' | 'synchronizable' | 'android'
-> & {
-  /**
-   * A label that isn't secret, readable without a prompt through `getItemInfo`. A write without one removes it; the
-   * empty string is a label, not the absence of one. Can't contain U+0000 (`INVALID_ARGUMENT`).
-   */
-  label?: string;
-};
+>;
 
 /** The options of a read; they override the store's. */
 export type GetOptions = {
@@ -96,28 +88,9 @@ export type CredentialsOptions = {
   server?: string;
 };
 
-/** What `getItemInfo` reports about an item, without a prompt. */
-export type ItemInfo = {
-  key: string;
-  label?: string;
-  accessible: Accessible;
-  accessControl: AccessControl;
-  /** Whether the item is in iCloud Keychain; always `false` on Android. */
-  synchronizable: boolean;
-  /** When the item was first written, in milliseconds since the Unix epoch. */
-  createdAt: number;
-  /** When the item was last written, in milliseconds since the Unix epoch. */
-  modifiedAt: number;
-  /** Android only. */
-  android?: {
-    /** Where the item's key lives. */
-    securityLevel: HardwareSecurityLevel;
-  };
-};
-
 /**
  * A store of secrets: the items of one service. Keys are non-empty strings of up to 256 characters without U+0000;
- * values are strings or bytes. A string, whether a value, a label, a user name or a password, can't contain U+0000
+ * values are strings or bytes. A string, whether a value, a user name or a password, can't contain U+0000
  * either: React Native cuts a string there on the bridge, so it is `INVALID_ARGUMENT` instead of a shorter secret.
  * `setBytes` and `getBytes` take any byte, zero included. A missing item reads as `null`; errors are `KeychainError`s.
  */
@@ -148,10 +121,6 @@ export interface Keychain {
 
   /** Whether there is an item with the key. Never shows a prompt. */
   hasItem(key: string): Promise<boolean>;
-  /** What the item is and how it is protected, or `null`. Never shows a prompt. */
-  getItemInfo(key: string): Promise<ItemInfo | null>;
-  /** The keys of every item of the store, sorted. Never shows a prompt. */
-  getAllKeys(): Promise<string[]>;
   /** Deletes every item of the store and, on Android, its Keystore keys. Never shows a prompt. */
   clear(): Promise<void>;
 
@@ -170,13 +139,12 @@ export interface Keychain {
   removeItemSync(key: string): void;
 
   /**
-   * Writes a user name and a password as one item, with the key `credentials` (or `credentials:<server>`) and the
-   * user name as its label: `getItemInfo` shows the user name without a prompt. Neither string can contain U+0000
-   * (`INVALID_ARGUMENT`).
+   * Writes a user name and a password as one item, with the key `credentials` (or `credentials:<server>`). Neither
+   * string can contain U+0000 (`INVALID_ARGUMENT`).
    */
   setCredentials(
     credentials: Credentials,
-    options?: Omit<SetOptions, 'label'> & CredentialsOptions
+    options?: SetOptions & CredentialsOptions
   ): Promise<void>;
   /** Reads the credentials, or `null`. Shows the prompt when the item has access control. */
   getCredentials(options?: GetOptions & CredentialsOptions): Promise<Credentials | null>;

@@ -154,7 +154,7 @@ export const BiometryType = {
 export type BiometryType = (typeof BiometryType)[keyof typeof BiometryType];
 
 /**
- * The hardware that keeps Keystore keys on Android, as `getHardwareSecurityLevel` and `getItemInfo` report it.
+ * The hardware that keeps Keystore keys on Android, as `getHardwareSecurityLevel` reports it.
  *
  * ```ts
  * if ((await getHardwareSecurityLevel()) === HardwareSecurityLevel.Strongbox) { … }

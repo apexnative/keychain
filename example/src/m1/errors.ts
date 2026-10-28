@@ -27,7 +27,6 @@ export const errors: Scenario = {
     await t.fails('a value with U+0000, synchronously', bad, () =>
       store.setItemSync('k', 'a\u0000')
     );
-    await t.fails('a label with U+0000', bad, () => store.setItem('k', 'v', { label: '\u0000' }));
     await t.fails('a user name with U+0000', bad, () =>
       store.setCredentials({ username: 'a\u0000b', password: 'p' })
     );
@@ -71,7 +70,7 @@ export const errors: Scenario = {
     await t.fails('a credentials server that is empty', bad, () =>
       store.getCredentials({ server: '' })
     );
-    await t.fails('a label for credentials', bad, () =>
+    await t.fails('an unknown option of credentials', bad, () =>
       store.setCredentials({ username: 'u', password: 'p' }, { label: 'x' } as never)
     );
     await t.fails('createKeychain with an empty service', bad, () =>
@@ -81,7 +80,7 @@ export const errors: Scenario = {
       createKeychain({ accessControl: AccessControl.BiometryCurrentSetOrPasscode, authValidity: 5 })
     );
 
-    await t.expect('nothing was stored', [], () => store.getAllKeys());
+    await t.expect('nothing was stored', false, () => store.hasItem('k'));
 
     let error: unknown;
     try {

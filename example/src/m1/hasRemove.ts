@@ -26,10 +26,9 @@ export const hasRemove: Scenario = {
     await t.expect('hasItem after removeItem', false, () => store.hasItem('a'));
     await t.expect('getItem after removeItem', null, () => store.getItem('a'));
     await t.expect('getBytes after removeItem', null, () => store.getBytes('a'));
-    await t.expect('getItemInfo after removeItem', null, () => store.getItemInfo('a'));
     await t.expect('another item stays', 'other', () => store.getItem('b'));
-    await t.expect('getAllKeys after removeItem', ['b', 'empty', 'empty-bytes'], () =>
-      store.getAllKeys()
+    await t.expect('the other items stay', [true, true, true], () =>
+      Promise.all([store.hasItem('b'), store.hasItem('empty'), store.hasItem('empty-bytes')])
     );
     await t.expect('removeItem of a missing item is no error', undefined, () =>
       store.removeItem('a')

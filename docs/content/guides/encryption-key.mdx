@@ -101,5 +101,5 @@ if (!stored && (await databaseFileExists())) {
 ## Don'ts {#donts}
 
 - Don't derive the key from something on the device (the device id, the user id): anyone who knows the rule can compute it.
-- Don't put the key, or any part of it, in a key name or a `label`: both are readable without a prompt.
+- Don't put the key, or any part of it, in a key name: it is readable without a prompt.
 - Don't log it or send it anywhere: every copy of the key outside the keychain is another place to steal it from.

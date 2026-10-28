@@ -86,7 +86,7 @@ type AuthenticationPrompt = {
   ]}
 />
 
-The core's [`Prompt`](/api/options/KeychainOptions#prompt) has two more fields, `fallback` and `confirmationRequired`; `/compat` keeps the core's defaults for them.
+The core's [`Prompt`](/api/options/KeychainOptions#prompt) has one more field, `confirmationRequired`; `/compat` keeps the core's default for it.
 
 ## SetOptions {#setoptions}
 
@@ -183,7 +183,7 @@ type UserCredentials = Result & {
 <Params
   label="Field"
   items={[
-    { name: 'username', type: 'string', text: 'The user name, kept as the item\'s label.' },
+    { name: 'username', type: 'string', text: 'The user name, kept with the password.' },
     { name: 'password', type: 'string', text: 'The secret.' },
   ]}
 />

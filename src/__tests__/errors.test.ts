@@ -25,8 +25,8 @@ describe('KeychainError', () => {
   });
 
   it('has every error code', () => {
-    expect(KEYCHAIN_ERROR_CODES).toHaveLength(20);
-    expect(new Set(KEYCHAIN_ERROR_CODES).size).toBe(20);
+    expect(KEYCHAIN_ERROR_CODES).toHaveLength(19);
+    expect(new Set(KEYCHAIN_ERROR_CODES).size).toBe(19);
   });
 
   it('is an Error with a code', () => {

@@ -66,7 +66,6 @@ export type UnavailableReason = 'noHardware' | 'notEnrolled' | 'passcodeNotSet' 
 /** The error codes; src/errors.ts has the same list, which a test keeps equal. */
 export type ErrorCode =
   | 'USER_CANCELED'
-  | 'USER_FALLBACK'
   | 'SYSTEM_CANCELED'
   | 'AUTH_FAILED'
   | 'LOCKOUT'
@@ -124,8 +123,6 @@ export type Prompt = {
   description?: string;
   /** iOS: `localizedCancelTitle`; Android: the negative button (only without a passcode fallback). */
   cancel?: string;
-  /** iOS: `localizedFallbackTitle`; '' hides the button. Android ignores it. */
-  fallback?: string;
   /** Android: `setConfirmationRequired`; iOS ignores it. JavaScript's default is true. */
   confirmationRequired: boolean;
 };

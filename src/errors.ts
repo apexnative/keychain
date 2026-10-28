@@ -12,8 +12,6 @@ export const KeychainErrorCode = {
    * same way: it can't be told from the user's cancel.
    */
   UserCanceled: 'USER_CANCELED',
-  /** The user tapped the fallback button of the prompt (iOS). */
-  UserFallback: 'USER_FALLBACK',
   /**
    * The system closed the prompt: the app went to the background, a call came. (Android 16 reports the background as
    * `USER_CANCELED`.)
@@ -65,7 +63,7 @@ export const KeychainErrorCode = {
  * Why a call failed.
  *
  * - `USER_CANCELED` — the user canceled the prompt (on Android 16 also: the app went to the background with the prompt
- *   open). `USER_FALLBACK` — the user tapped the fallback button (iOS, `biometryAny`).
+ *   open).
  * - `SYSTEM_CANCELED` — the system closed the prompt: the app went to the background, a call came.
  * - `AUTH_FAILED` — the biometry wasn't recognized (iOS).
  * - `LOCKOUT` — too many attempts, biometry is locked for a while. `LOCKOUT_PERMANENT` — locked until the user

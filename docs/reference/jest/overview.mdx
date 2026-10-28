@@ -52,7 +52,7 @@ Everything the package exports, with the same names and types, and three more na
 | `getBiometryTypes`, `canUseAccessControl`, `isPasscodeSet`, `getBiometryState`, `getHardwareSecurityLevel` | The answers of the [simulated device](#device). |
 | `Accessible`, `AccessControl`, `KeyStorage`, `BiometryType`, `HardwareSecurityLevel`, `KeychainErrorCode` | The constants: the same objects as the package's. |
 | `KeychainError`, `isKeychainError` | The same class and check: an error of the mock is an `instanceof KeychainError`. |
-| The types of the package | `Keychain`, `KeychainOptions`, `SetOptions`, `ItemInfo` and the rest, and `KeychainErrorDetails`. |
+| The types of the package | `Keychain`, `KeychainOptions`, `SetOptions` and the rest, and `KeychainErrorDetails`. |
 | [`keychainMock`](/api/jest/keychainMock) | The controls of the device, the prompts and the old items. |
 | [`migrate`](#migrate) | `@apexnative/keychain/migrate` over the same memory. |
 | [`compat`](#compat) | `@apexnative/keychain/compat` over the same memory. |
@@ -100,18 +100,17 @@ Until a test changes it with [`setDevice`](/api/jest/keychainMock#setDevice), th
 - **Protection at write time.** A write the device can't protect throws, and nothing is stored: `BIOMETRY_NOT_AVAILABLE` without biometric hardware, `BIOMETRY_NOT_ENROLLED` without enrolled biometry, `PASSCODE_NOT_SET` for a passcode option or `whenPasscodeSetThisDeviceOnly` without a passcode. `canUseAccessControl` answers with the reasons in the package's order.
 - **Face ID without its description.** With `faceIDUsageDescription: false` on a Face ID device, a write with a biometric `accessControl` and `canUseAccessControl` for one reject with `MISSING_USAGE_DESCRIPTION`.
 - **Old Android.** With `androidApi` below 30, the passcode variants are `unsupportedOS`, and a write with one of them, or with `authValidity` above 0, throws `UNSUPPORTED`.
-- **The key's hardware.** With a `hardwareSecurityLevel`, `getItemInfo` reports where each item's key lives, and `strongboxRequired` throws `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.
+- **The key's hardware.** With a `hardwareSecurityLevel`, `strongboxRequired` throws `HARDWARE_UNAVAILABLE` unless the level is `strongbox`.
 - **Prompts.** A read of a protected item records a prompt and succeeds, or fails with the code a test queued. A sync read of it throws `AUTH_REQUIRED`.
 - **New biometry.** After [`changeBiometry()`](/api/jest/keychainMock#changeBiometry), items written with `biometryCurrentSet` or `biometryCurrentSetOrPasscode` throw `KEY_INVALIDATED` and are deleted.
 - **Bytes and text.** An item written with `setBytes` that isn't UTF-8 throws `INVALID_ARGUMENT` when read with `getItem`.
-- **The items' info.** `getItemInfo` returns the label and the options of the write, and `createdAt` and `modifiedAt` that grow with every write.
 
 ## What it doesn't {#limits}
 
 - **The lock state.** Reads never fail with `INTERACTION_NOT_ALLOWED`, whatever `accessible` says.
 - **The reuse window.** With [`authValidity`](/api/options/KeychainOptions#auth-validity), every protected read still records a prompt.
 - **Access groups.** Items are kept per service: [`accessGroup`](/api/options/KeychainOptions#access-group) changes nothing, and `MISSING_ENTITLEMENT` never happens.
-- **iCloud Keychain.** `synchronizable` is kept and reported by `getItemInfo`, nothing more.
+- **iCloud Keychain.** `synchronizable` is accepted, nothing more.
 - **The prompt itself.** Prompts don't wait for each other, `NO_ACTIVITY` never happens, and the system ends a prompt only when a test queues it with [`failNextAuthentication`](/api/jest/keychainMock#failNextAuthentication).
 - **Reinstalls.** `clearOnReinstall` is a setting of the app, not of the mock.
 

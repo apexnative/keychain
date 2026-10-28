@@ -21,7 +21,7 @@ export const authRequired: Scenario = {
   milestone: 'M1',
   title: 'AUTH_REQUIRED',
   description:
-    'A synchronous read of an item with access control throws AUTH_REQUIRED and shows no prompt. hasItem, getItemInfo and removeItem work on it without one. Needs Face ID or a fingerprint enrolled, or a passcode.',
+    'A synchronous read of an item with access control throws AUTH_REQUIRED and shows no prompt. hasItem and removeItem work on it without one. Needs Face ID or a fingerprint enrolled, or a passcode.',
   async run(t) {
     const store = await t.store('auth-required');
     await store.setItem('open', 'no access control');
@@ -33,7 +33,6 @@ export const authRequired: Scenario = {
       try {
         await store.setItem('locked', 'protected value', {
           accessControl: candidate,
-          label: 'Locked',
         });
         accessControl = candidate;
         break;
@@ -70,15 +69,6 @@ export const authRequired: Scenario = {
     );
     await t.expect('hasItemSync, no prompt', true, () => store.hasItemSync('locked'));
     await t.expect('hasItem, no prompt', true, () => store.hasItem('locked'));
-    await t.expect(
-      'getItemInfo, no prompt',
-      { key: 'locked', label: 'Locked', accessControl },
-      async () => {
-        const info = await store.getItemInfo('locked');
-        return info && { key: info.key, label: info.label, accessControl: info.accessControl };
-      }
-    );
-    await t.expect('getAllKeys, no prompt', ['locked', 'open'], () => store.getAllKeys());
     await t.expect('removeItemSync, no prompt', false, () => {
       store.removeItemSync('locked');
       return store.hasItemSync('locked');

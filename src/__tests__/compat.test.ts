@@ -116,10 +116,10 @@ describe('generic passwords', () => {
     await expect(keychain.getCredentials()).resolves.toEqual({ username: 'ivan', password: 'p1' });
     const work = createKeychain({ service: 'work' });
     await expect(work.getCredentials()).resolves.toEqual({ username: 'anna', password: 'p2' });
-    await expect(work.getItemInfo('credentials')).resolves.toMatchObject({ label: 'anna' });
-    await expect(work.getAllKeys()).resolves.toEqual(['credentials']);
+    await expect(work.hasItem('credentials')).resolves.toBe(true);
     // Nothing of it is in the default store but the app's own.
-    await expect(keychain.getAllKeys()).resolves.toEqual(['credentials']);
+    await expect(keychain.hasItem('credentials')).resolves.toBe(true);
+    await expect(keychain.hasItem('credentials:work')).resolves.toBe(false);
     await expect(compat.getGenericPassword({ service: 'work' })).resolves.toMatchObject({
       service: 'work',
       username: 'anna',
@@ -170,7 +170,7 @@ describe('generic passwords', () => {
       'd',
       'e',
     ]);
-    await expect(keychain.getAllKeys()).resolves.toEqual([]);
+    await expect(keychain.hasItem('credentials')).resolves.toBe(false);
   });
 
   it('take the options of rnk: accessible, accessControl, cloudSync', async () => {
@@ -179,12 +179,12 @@ describe('generic passwords', () => {
       accessible: ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
       accessControl: ACCESS_CONTROL.BIOMETRY_CURRENT_SET,
     });
-    await expect(
-      createKeychain({ service: 'a' }).getItemInfo('credentials')
-    ).resolves.toMatchObject({
-      accessible: 'whenUnlockedThisDeviceOnly',
-      accessControl: 'biometryCurrentSet',
-    });
+    // An item with an access control refuses a synchronous read, without a prompt.
+    const protectedItem = (name: string) =>
+      expect(() => createKeychain({ service: name }).getItemSync('credentials')).toThrow(
+        expect.objectContaining({ code: 'AUTH_REQUIRED' })
+      );
+    protectedItem('a');
     await compat.setGenericPassword('u', 'p', {
       service: 'b',
       accessControl: ACCESS_CONTROL.USER_PRESENCE,
@@ -194,11 +194,9 @@ describe('generic passwords', () => {
       accessControl: ACCESS_CONTROL.DEVICE_PASSCODE,
     });
     await compat.setGenericPassword('u', 'p', { service: 'd', cloudSync: true });
-    const info = async (name: string) =>
-      (await createKeychain({ service: name }).getItemInfo('credentials'))!;
-    expect((await info('b')).accessControl).toBe('biometryAnyOrPasscode');
-    expect((await info('c')).accessControl).toBe('passcode');
-    expect((await info('d')).synchronizable).toBe(true);
+    protectedItem('b');
+    protectedItem('c');
+    expect(createKeychain({ service: 'd' }).getItemSync('credentials')).toBe('p');
     await compat.setGenericPassword('u', 'p', {
       service: 'e',
       accessControl: ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
@@ -207,8 +205,8 @@ describe('generic passwords', () => {
       service: 'f',
       accessControl: ACCESS_CONTROL.BIOMETRY_CURRENT_SET_OR_DEVICE_PASSCODE,
     });
-    expect((await info('e')).accessControl).toBe('biometryAnyOrPasscode');
-    expect((await info('f')).accessControl).toBe('biometryCurrentSetOrPasscode');
+    protectedItem('e');
+    protectedItem('f');
     // The prompt is not part of a write.
     expect(keychainMock.prompts()).toEqual([]);
   });
@@ -295,7 +293,7 @@ describe('what the package does not do', () => {
     expect(error).toBeInstanceOf(KeychainError);
     expect(error).toMatchObject({ code: 'UNSUPPORTED' });
     expect((error as Error).message).toContain('@apexnative/keychain/compat');
-    await expect(keychain.getAllKeys()).resolves.toEqual([]);
+    await expect(keychain.hasItem('credentials')).resolves.toBe(false);
     expect(what).toBeTruthy();
   });
 });
