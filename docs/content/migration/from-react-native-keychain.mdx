@@ -57,14 +57,13 @@ export function App() {
 | `setGenericPassword(username, password)`: the default service | The credentials of the default storage, `keychain` | The service |
 | `setInternetCredentials('api.example.com', username, password)` | The credentials of `into` (default: `keychain`) with `server: 'api.example.com'` | `'api.example.com'` |
 
-The username becomes the item's label, readable without a prompt, and the password its value:
+The username is kept with the password in one item:
 
 ```ts
 import { createKeychain, keychain } from '@apexnative/keychain';
 
 const auth = createKeychain({ service: 'auth' });
 await auth.getCredentials(); // { username, password }, what rnk's getGenericPassword({ service: 'auth' }) gave
-await auth.getItemInfo('credentials'); // { label: username, … }, without a prompt
 await keychain.getCredentials({ server: 'api.example.com' });
 ```
 
@@ -146,7 +145,7 @@ To leave the compat layer, one call at a time:
 | `getGenericPassword({ service })` | `createKeychain({ service }).getCredentials()`: `null`, not `false`, when there is none |
 | `hasGenericPassword({ service })` | `hasItem('credentials')` |
 | `resetGenericPassword({ service })` | `removeCredentials()`, or `clear()` for the whole service |
-| `getAllGenericPasswordServices()` | No equivalent: `getAllKeys()` lists the keys of one service |
+| `getAllGenericPasswordServices()` | No equivalent: the package has no list of services |
 | `setInternetCredentials(server, username, password)` | `keychain.setCredentials({ username, password }, { server })` |
 | `getInternetCredentials(server)` | `keychain.getCredentials({ server })` |
 | `hasInternetCredentials(server)` | `keychain.hasItem('credentials:' + server)` |

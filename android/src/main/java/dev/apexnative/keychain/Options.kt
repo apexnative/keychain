@@ -113,7 +113,6 @@ internal data class PromptTexts(
     val confirmationRequired: Boolean,
 ) {
     companion object {
-        /** `fallback` is iOS's: Android ignores it. */
         fun of(prompt: ReadableMap) = PromptTexts(
             title = prompt.optionalString("title"),
             subtitle = prompt.optionalString("subtitle"),

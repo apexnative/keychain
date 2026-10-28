@@ -23,7 +23,7 @@ The package puts secrets under the protection the operating system gives its own
   no={[
     <><strong>Root and jailbreak, for items without <code>accessControl</code>.</strong> Code running as your app can call the same API your app calls and read every item it can read.</>,
     <><strong>Process memory.</strong> A value read into JavaScript is a string in the JS heap, and the app can't wipe it. Read secrets when you need them; don't keep them in long-lived state.</>,
-    <><strong>Key names and labels.</strong> They are readable without a prompt by design; on Android they are in the clear in the app's sandbox.</>,
+    <><strong>Key names.</strong> They are readable without a prompt by design; on Android they are in the clear in the app's sandbox.</>,
     <><strong>Someone who knows the passcode,</strong> for items whose <code>accessControl</code> accepts it, and for every item on an unlocked phone in their hands.</>,
     <><strong>What your app does with a value:</strong> logs, crash reports, analytics, screenshots of a screen that shows it.</>,
     <><strong>The server side:</strong> a stolen refresh token is revoked by your backend, not by the keychain.</>,
@@ -37,7 +37,7 @@ The package puts secrets under the protection the operating system gives its own
 | A short-lived access token | `afterFirstUnlock`, no `accessControl` | Background requests read it; it expires anyway |
 | A refresh token, a session secret | `whenUnlockedThisDeviceOnly`, `biometryCurrentSet` | It can make new sessions: it should need the user |
 | The key of a local database | `afterFirstUnlockThisDeviceOnly`, no `accessControl` | The app opens the database at launch and in the background |
-| A password for "Sign in as …" | `biometryCurrentSetOrPasscode`, the username as a `label` | The name shows without a prompt; the password needs the user |
+| A password for "Sign in as …" | `biometryCurrentSetOrPasscode` | The username comes back with the password, after the prompt |
 | A setting that follows the user | `afterFirstUnlock`, `synchronizable: true` | iCloud Keychain moves it; nothing device-bound |
 
 `biometryCurrentSet` is stronger than `biometryAny`: it also stops someone who knows the passcode from enrolling their own face. The `…OrPasscode` options are kinder to people whose biometrics fails often, and as strong as the passcode.

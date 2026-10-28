@@ -1,4 +1,4 @@
-import { keychain, type Keychain, Accessible } from '@apexnative/keychain';
+import { keychain, type Keychain, Accessible, KeychainErrorCode } from '@apexnative/keychain';
 import type { Scenario } from '../harness/types';
 import { SERVICE_PREFIX } from '../harness/runner';
 
@@ -43,21 +43,19 @@ export const services: Scenario = {
     await stores[1]!.clear();
     await t.expect('clearing one leaves the others', 'value 2', () => stores[2]!.getItem('shared'));
 
-    const defaults = await t.store('services.defaults', {
-      accessible: Accessible.WhenUnlockedThisDeviceOnly,
+    // The store's options are the defaults of its calls: a call that doesn't name one gets the store's. Both checks are
+    // made by the package before anything is written, so no device feature is needed.
+    const defaults = await t.store('services.defaults', { synchronizable: true });
+    await t.fails('a call takes the options of the store', KeychainErrorCode.InvalidArgument, () =>
+      defaults.setItem('inherits', 'v', { accessible: Accessible.WhenUnlockedThisDeviceOnly })
+    );
+    await t.expect('and its own options over them', 'v', async () => {
+      await defaults.setItem('overrides', 'v', {
+        accessible: Accessible.WhenUnlockedThisDeviceOnly,
+        synchronizable: false,
+      });
+      return defaults.getItem('overrides');
     });
-    await defaults.setItem('inherits', 'v');
-    await defaults.setItem('overrides', 'v', { accessible: Accessible.AfterFirstUnlock });
-    await t.expect(
-      'a call takes the options of the store',
-      Accessible.WhenUnlockedThisDeviceOnly,
-      async () => (await defaults.getItemInfo('inherits'))?.accessible
-    );
-    await t.expect(
-      'and its own options over them',
-      Accessible.AfterFirstUnlock,
-      async () => (await defaults.getItemInfo('overrides'))?.accessible
-    );
-    await t.expect('the store reads its items', 'v', () => defaults.getItem('inherits'));
+    await t.expect('the failed call wrote nothing', false, () => defaults.hasItem('inherits'));
   },
 };

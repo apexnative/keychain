@@ -29,7 +29,7 @@ The package checks these rules in JavaScript, before the native call, on both pl
 
 ## Reads find either kind {#reads}
 
-The flag is set explicitly on every write. Reads, removes and listings match items whether they are synchronized or not, so an item written with one value of `synchronizable` is found and removed after a change of the option. `getItemInfo` tells which kind an item is.
+The flag is set explicitly on every write. Reads, removes and listings match items whether they are synchronized or not, so an item written with one value of `synchronizable` is found and removed after a change of the option.
 
 ## What it is for {#when}
 
@@ -43,4 +43,4 @@ Keep out of it:
 
 ## Android {#android}
 
-Android has no iCloud Keychain <Os name="Android" />. The option is ignored there, with a warning in development, so that shared code needs no `Platform.select`; `getItemInfo` reports `synchronizable: false`. Synchronization between Android devices (Block Store) isn't part of version 1.
+Android has no iCloud Keychain <Os name="Android" />. The option is ignored there, with a warning in development, so that shared code needs no `Platform.select`. Synchronization between Android devices (Block Store) isn't part of version 1.

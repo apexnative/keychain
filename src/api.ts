@@ -23,7 +23,6 @@ import type {
   BiometryType,
   Credentials,
   HardwareSecurityLevel,
-  ItemInfo,
   Keychain,
   KeychainOptions,
 } from './types';
@@ -71,20 +70,6 @@ function checkCredentials(credentials: unknown): Credentials {
   const { username, password } = credentials as Record<string, unknown>;
   if (username === '') throw invalidArgument('Invalid username: expected a non-empty string.');
   return { username: checkText(username, 'username'), password: checkText(password, 'password') };
-}
-
-function toItemInfo(info: Native.ItemInfo): ItemInfo {
-  const result: ItemInfo = {
-    key: info.key,
-    accessible: info.accessible,
-    accessControl: info.accessControl,
-    synchronizable: info.synchronizable,
-    createdAt: info.createdAt,
-    modifiedAt: info.modifiedAt,
-  };
-  if (info.label != null) result.label = info.label;
-  if (info.securityLevel != null) result.android = { securityLevel: info.securityLevel };
-  return result;
 }
 
 /** The API over the native module that `native` returns (or throws without). */
@@ -147,13 +132,6 @@ export function createApi(native: () => Native.Spec): Api {
           const checkedKey = checkKey(key);
           return native().hasItem(store(), checkedKey);
         }),
-      getItemInfo: (key) =>
-        run(async () => {
-          const checkedKey = checkKey(key);
-          const info = await native().getItemInfo(store(), checkedKey);
-          return info ? toItemInfo(info) : null;
-        }),
-      getAllKeys: () => run(async () => [...(await native().getAllKeys(store()))].sort()),
       clear: () =>
         run(async () => {
           await native().clear(store());
@@ -181,10 +159,8 @@ export function createApi(native: () => Native.Spec): Api {
       setCredentials: (credentials, setOptions) =>
         run(async () => {
           const { username, password } = checkCredentials(credentials);
+          // The user name is the item's label; `label` is no option of the call, so parseSetOptions rejects it.
           const parsed = parseSetOptions(setOptions, ['server']);
-          if (parsed.label !== undefined) {
-            throw invalidArgument('setCredentials takes no label: the label holds the user name.');
-          }
           const key = credentialsKey(parsed.server);
           const write = resolveWrite(options, { ...parsed, label: username });
           await native().setItem(store(), key, password, 'utf8', write);

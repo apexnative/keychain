@@ -49,24 +49,11 @@ describe('a store', () => {
     await keychain.setItem('value', 'before');
     expect(await codeOf(() => keychain.setItem('value', 'a\u0000b'))).toBe('INVALID_ARGUMENT');
     expect(() => keychain.setItemSync('value', 'a\u0000b')).toThrow(KeychainError);
-    expect(await codeOf(() => keychain.setItem('value', 'v', { label: 'a\u0000b' }))).toBe(
-      'INVALID_ARGUMENT'
-    );
     await expect(keychain.getItem('value')).resolves.toBe('before');
 
     const bytes = Uint8Array.from([0x61, 0, 0x62, 0]);
     await keychain.setBytes('zeros', bytes);
     await expect(keychain.getBytes('zeros')).resolves.toEqual(bytes);
-  });
-
-  it('keeps the empty label apart from no label', async () => {
-    await keychain.setItem('a', 'v', { label: '' });
-    await expect(keychain.getItemInfo('a')).resolves.toMatchObject({ label: '' });
-    await keychain.setItem('a', 'v', { label: 'Account' });
-    await keychain.setItem('a', 'v', { label: '' });
-    await expect(keychain.getItemInfo('a')).resolves.toMatchObject({ label: '' });
-    await keychain.setItem('a', 'v');
-    expect(await keychain.getItemInfo('a')).not.toHaveProperty('label');
   });
 
   it('resolves a method without a value to undefined', async () => {
@@ -92,35 +79,18 @@ describe('a store', () => {
     await expect(keychain.getBytes('string')).resolves.toEqual(Uint8Array.from([0xd0, 0xb4]));
   });
 
-  it('keeps stores apart, lists and clears one', async () => {
+  it('keeps stores apart and clears one', async () => {
     const other = createKeychain({ service: 'other' });
     await keychain.setItem('b', '1');
     await keychain.setItem('a', '2');
     await other.setItem('c', '3');
-    await expect(keychain.getAllKeys()).resolves.toEqual(['a', 'b']);
-    await expect(other.getAllKeys()).resolves.toEqual(['c']);
+    await expect(keychain.hasItem('a')).resolves.toBe(true);
+    await expect(keychain.hasItem('c')).resolves.toBe(false);
+    await expect(other.hasItem('c')).resolves.toBe(true);
     await keychain.clear();
-    await expect(keychain.getAllKeys()).resolves.toEqual([]);
+    await expect(keychain.hasItem('a')).resolves.toBe(false);
+    await expect(keychain.hasItem('b')).resolves.toBe(false);
     await expect(other.getItem('c')).resolves.toBe('3');
-  });
-
-  it('reports what an item is without reading it', async () => {
-    await keychain.setItem('a', 'v', { label: 'Account', accessible: 'whenUnlocked' });
-    const first = await keychain.getItemInfo('a');
-    expect(first).toEqual({
-      key: 'a',
-      label: 'Account',
-      accessible: 'whenUnlocked',
-      accessControl: 'none',
-      synchronizable: false,
-      createdAt: expect.any(Number),
-      modifiedAt: first!.createdAt,
-    });
-    await keychain.setItem('a', 'w');
-    const second = await keychain.getItemInfo('a');
-    expect(second!.label).toBeUndefined();
-    expect(second!.createdAt).toBe(first!.createdAt);
-    expect(second!.modifiedAt).toBeGreaterThan(first!.modifiedAt);
   });
 
   it('works synchronously', () => {
@@ -151,12 +121,10 @@ describe('access control', () => {
     ]);
   });
 
-  it('never prompts for has, info and keys', async () => {
+  it('never prompts for has', async () => {
     const store = vault();
     await store.setItem('dbKey', 'k');
     await store.hasItem('dbKey');
-    await store.getItemInfo('dbKey');
-    await store.getAllKeys();
     expect(store.hasItemSync('dbKey')).toBe(true);
     expect(keychainMock.prompts()).toEqual([]);
   });
@@ -327,12 +295,10 @@ describe('access control', () => {
 });
 
 describe('credentials', () => {
-  it('show the user name without a prompt and the password with one', async () => {
+  it('are read with the user name and the password in one prompt', async () => {
     const store = createKeychain({ accessControl: 'biometryAny' });
     await store.setCredentials({ username: 'ivan@example.com', password: 'p' });
-    await expect(store.getItemInfo('credentials')).resolves.toMatchObject({
-      label: 'ivan@example.com',
-    });
+    await expect(store.hasItem('credentials')).resolves.toBe(true);
     expect(keychainMock.prompts()).toEqual([]);
     await expect(store.getCredentials()).resolves.toEqual({
       username: 'ivan@example.com',
@@ -344,10 +310,8 @@ describe('credentials', () => {
   it('are kept per server', async () => {
     await keychain.setCredentials({ username: 'a', password: '1' });
     await keychain.setCredentials({ username: 'b', password: '2' }, { server: 'example.com' });
-    await expect(keychain.getAllKeys()).resolves.toEqual([
-      'credentials',
-      'credentials:example.com',
-    ]);
+    await expect(keychain.hasItem('credentials')).resolves.toBe(true);
+    await expect(keychain.hasItem('credentials:example.com')).resolves.toBe(true);
     await keychain.removeCredentials({ server: 'example.com' });
     await expect(keychain.getCredentials({ server: 'example.com' })).resolves.toBeNull();
     await expect(keychain.getCredentials()).resolves.toEqual({ username: 'a', password: '1' });
@@ -383,34 +347,24 @@ describe('the device', () => {
     });
   });
 
-  it('keeps a key where keyStorage says, on a device with a hardware level', async () => {
-    const level = async (keyStorage: 'tee' | 'strongbox' | 'strongboxRequired') => {
-      await keychain.setItem('a', 'v', { android: { keyStorage } });
-      return (await keychain.getItemInfo('a'))?.android?.securityLevel;
-    };
-    // iOS: no level, no meaning.
-    await keychain.setItem('a', 'v', { android: { keyStorage: 'strongboxRequired' } });
-    expect(await keychain.getItemInfo('a')).not.toHaveProperty('android');
-
+  it('rejects strongboxRequired on a device without StrongBox, and writes otherwise', async () => {
+    const write = (keyStorage: 'tee' | 'strongbox' | 'strongboxRequired') =>
+      keychain.setItem('a', 'v', { android: { keyStorage } });
     keychainMock.setDevice({ hardwareSecurityLevel: 'strongbox' });
-    expect([
-      await level('tee'),
-      await level('strongbox'),
-      await level('strongboxRequired'),
-    ]).toEqual(['tee', 'strongbox', 'strongbox']);
+    for (const keyStorage of ['tee', 'strongbox', 'strongboxRequired'] as const) {
+      await expect(write(keyStorage)).resolves.toBeUndefined();
+    }
     keychainMock.setDevice({ hardwareSecurityLevel: 'tee' });
-    expect([await level('tee'), await level('strongbox')]).toEqual(['tee', 'tee']);
-    expect(await codeOf(() => level('strongboxRequired'))).toBe('HARDWARE_UNAVAILABLE');
+    await expect(write('strongbox')).resolves.toBeUndefined();
+    expect(await codeOf(() => write('strongboxRequired'))).toBe('HARDWARE_UNAVAILABLE');
     await expect(keychain.getItem('a')).resolves.toBe('v');
-    keychainMock.setDevice({ hardwareSecurityLevel: 'software' });
-    expect(await level('strongbox')).toBe('software');
   });
 
   it('is reset', async () => {
     keychainMock.setDevice({ defaultService: 'com.example' });
     await keychain.setItem('a', 'v');
     keychainMock.reset();
-    await expect(keychain.getAllKeys()).resolves.toEqual([]);
+    await expect(keychain.hasItem('a')).resolves.toBe(false);
     await expect(getBiometryTypes()).resolves.toEqual(['faceID']);
   });
 

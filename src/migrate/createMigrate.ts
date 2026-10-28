@@ -28,7 +28,7 @@ const RNK_OPTIONS = [...COMMON, 'services', 'servers'];
 const EXPO_OPTIONS = [...COMMON, 'keychainService'];
 const ITEM_OPTIONS = [...COMMON, 'prompt', 'setOptions'];
 
-type WriteOptions = Omit<SetOptions, 'label'>;
+type WriteOptions = SetOptions;
 
 /** One item's way through: moved, or skipped for a reason; and whether its old item could be finished. */
 type Outcome =

@@ -12,9 +12,14 @@ export const parallel: Scenario = {
   async run(t) {
     const store = await t.store('parallel');
 
+    const present = async (names: string[]) => {
+      const found = await Promise.all(names.map((name) => store.hasItem(name)));
+      return names.filter((_, index) => found[index]);
+    };
+
     await t.expect('20 writes to 20 keys at once', keys, async () => {
       await Promise.all(keys.map((key) => store.setItem(key, `value of ${key}`)));
-      return store.getAllKeys();
+      return present(keys);
     });
     await t.expect(
       '20 reads at once, each its own value',
@@ -31,7 +36,7 @@ export const parallel: Scenario = {
       winner = `throws ${codeOf(error)}`;
     }
     t.oneOf('10 writes to one key at once leave one of them', candidates, winner);
-    await t.expect('and no other key', [...keys, 'race'].sort(), () => store.getAllKeys());
+    await t.expect('and the other keys stay', keys, () => present(keys));
 
     await t.expect(
       'writes and removals at once',
@@ -42,7 +47,7 @@ export const parallel: Scenario = {
             index % 2 === 0 ? store.setItem(key, 'kept') : store.removeItem(key)
           )
         );
-        return (await store.getAllKeys()).filter((key) => key !== 'race');
+        return present(keys);
       }
     );
     await t.expect('reads while writing', 'x'.repeat(5000), async () => {

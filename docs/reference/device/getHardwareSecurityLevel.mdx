@@ -31,7 +31,7 @@ function getHardwareSecurityLevel(): Promise<HardwareSecurityLevel | null>;
 
 The best place a new key can live on this device: `'strongbox'` when the device has StrongBox, else where a key made in the TEE actually lives, `'tee'` or `'software'`. See [HardwareSecurityLevel](./HardwareSecurityLevel). `null` on iOS, where the Secure Enclave protects every item and there is nothing to choose.
 
-The answer is measured once, with a short-lived probe key, and kept. It is what the device offers, not where a given item's key is: that one is `android.securityLevel` in [`getItemInfo`](/api/storage/methods#getItemInfo), and depends on the item's [`keyStorage`](/api/options/KeyStorage) too.
+The answer is measured once, with a short-lived probe key, and kept. It is what the device offers, not where a given item's key is: that one depends on the item's [`keyStorage`](/api/options/KeyStorage) too.
 
 ## See also {#see-also}
 

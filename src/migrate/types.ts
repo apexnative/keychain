@@ -94,5 +94,5 @@ export type MigrateItemOptions = Common & {
    * written with an `accessControl` (the package never lowers the protection by itself); without one, `migrateItem`
    * rejects with `INVALID_ARGUMENT` before it shows anything.
    */
-  setOptions?: Omit<SetOptions, 'label'>;
+  setOptions?: SetOptions;
 };

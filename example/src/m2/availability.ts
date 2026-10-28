@@ -80,14 +80,15 @@ export const availability: Scenario = {
             return codeOf(error);
           }
           written.push(key);
-          return (await store.getItemInfo(key))?.accessControl === accessControl
-            ? 'written'
-            : 'written, with another access control';
+          return (await store.hasItem(key)) ? 'written' : 'written, but there is no item';
         }
       );
     }
-    await t.expect('only what could be written is stored', written.sort(), () =>
-      store.getAllKeys()
+    const keys = Object.values(AccessControl).map((accessControl) => `item-${accessControl}`);
+    await t.expect(
+      'only what could be written is stored',
+      keys.map((key) => written.includes(key)),
+      () => Promise.all(keys.map((key) => store.hasItem(key)))
     );
   },
 };

@@ -49,7 +49,7 @@ const report = await migrateFromExpoSecureStore({ removeSource: true });
 | `setItem(key, value)` (sync) | `setItemSync(key, value)` |
 | `isAvailableAsync()` | Always available on iOS and Android; on the web every method throws `UNSUPPORTED` |
 | `canUseBiometricAuthentication()` | `canUseAccessControl(AccessControl.BiometryCurrentSet)`, with the reason when it can't |
-| — | `setBytes`, `getBytes`, `hasItem`, `getAllKeys`, `clear`, `getItemInfo`, credentials |
+| — | `setBytes`, `getBytes`, `hasItem`, `clear`, credentials |
 
 | Option of expo-secure-store | Here |
 | --- | --- |

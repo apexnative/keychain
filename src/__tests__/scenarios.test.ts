@@ -178,7 +178,7 @@ describe('the scenarios on the in-memory module', () => {
     const ids = harness.scenarios.map((scenario) => scenario.id);
     expect(ids[0]).toBe('run-all');
     expect(new Set(ids).size).toBe(ids.length);
-    expect(harness.scenarios.filter((scenario) => scenario.milestone === 'M1').length).toBe(16);
+    expect(harness.scenarios.filter((scenario) => scenario.milestone === 'M1').length).toBe(14);
     expect(harness.scenarios.filter((scenario) => scenario.milestone === 'M2').length).toBe(10);
     expect(
       harness.scenarios
@@ -224,41 +224,38 @@ describe('the scenarios on the in-memory module', () => {
   });
 
   it('leave nothing behind', async () => {
-    const harness = load(memoryNative);
+    const memory = new (
+      require('../jest/MemoryKeychain') as typeof import('../jest/MemoryKeychain')
+    ).MemoryKeychain();
+    memory.controls.setDevice({ defaultService: 'dev.apexnative.keychain.example' });
+    const harness = load(() => memory);
     await harness.runScenario(harness.scenarios[0]!);
-    const { createKeychain, keychain } =
-      require('@apexnative/keychain') as typeof import('../index');
-    await expect(keychain.getAllKeys()).resolves.toEqual([]);
+    const { keychain } = require('@apexnative/keychain') as typeof import('../index');
     const leftovers = await Promise.all(
-      [
-        'strings',
-        'bytes',
-        'overwrite',
-        'info',
-        'services.vault',
-        'credentials',
-        'm2-availability',
-      ].map((name) => createKeychain({ service: `apexnative.example.${name}` }).getAllKeys())
+      ['strings', 'bytes', 'overwrite', 'services.vault', 'credentials', 'm2-availability'].map(
+        (name) => memory.getAllKeys({ service: `apexnative.example.${name}` })
+      )
     );
     expect(leftovers).toEqual(leftovers.map(() => []));
+    await expect(memory.getAllKeys({ service: keychain.service })).resolves.toEqual([]);
   });
 
   it('show a bug of an implementation as a failed row, not a crash', async () => {
     const harness = load(() => {
       const memory = memoryNative();
-      // An implementation that forgets to keep the label when a value is overwritten.
-      const original = memory.getItemInfo.bind(memory);
-      memory.getItemInfo = async (...args) => {
-        const info = await original(...args);
-        return info && { ...info, label: info.label === undefined ? 'surprise' : info.label };
+      // An implementation that forgets to replace a value when it is overwritten.
+      const original = memory.setItem.bind(memory);
+      memory.setItem = async (store, key, value, ...rest) => {
+        const exists = await memory.hasItem(store, key);
+        return original(store, key, exists ? 'stale' : value, ...rest);
       };
       return memory;
     });
-    const run = await harness.runScenario(find(harness, 'info'));
+    const run = await harness.runScenario(find(harness, 'overwrite'));
     expect(run.state).toBe('failed');
     const failed = failures(run);
-    expect(failed.map((row) => row.name)).toContain('the label is removed by a write without one');
-    expect(failed[0]).toMatchObject({ expected: 'undefined', got: '"surprise"' });
+    expect(failed.map((row) => row.name)).toContain('the value is replaced');
+    expect(failed[0]).toMatchObject({ expected: '"two"', got: '"stale"' });
   });
 });
 
@@ -338,20 +335,16 @@ describe("the scenarios that need a person, with the mock in the person's place"
     });
   });
 
-  it('"fallback button" passes on a tapped fallback, and is for iOS only', async () => {
+  it('"no fallback button" passes on a cancel, leaves the buttons to a person, and is for iOS only', async () => {
     const harness = load(memoryNative);
-    controls(harness).failNextAuthentication('USER_FALLBACK');
-    const run = await harness.runScenario(find(harness, 'm2-fallback'));
-    expect([run.state, failures(run)]).toEqual(['passed', []]);
-    expect(
-      controls(harness)
-        .prompts()
-        .map((prompt) => prompt.fallback)
-    ).toEqual(['Other way', '']);
+    controls(harness).failNextAuthentication('USER_CANCELED');
+    const run = await harness.runScenario(find(harness, 'm2-no-fallback'));
+    expect([run.state, failures(run)]).toEqual(['review', []]);
+    expect(controls(harness).prompts()).toHaveLength(1);
 
     const android = load(memoryNative);
     android.platform.OS = 'android';
-    const skipped = await android.runScenario(find(android, 'm2-fallback'));
+    const skipped = await android.runScenario(find(android, 'm2-no-fallback'));
     expect([skipped.state, skipped.rows]).toEqual(['skipped', []]);
     expect(controls(android).prompts()).toEqual([]);
   });

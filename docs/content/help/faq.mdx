@@ -41,15 +41,11 @@ On Android, no, by design: the files are kept out of backups, because Keystore k
 
 ## Why doesn't getItem find what react-native-keychain stored? {#other-libraries}
 
-The package sees only its own items. On iOS its queries are limited to its own mark, so the items of `react-native-keychain` or `expo-secure-store` stay out of sight even under the same service: `getItem` returns `null`, `getAllKeys` doesn't list them, and `clear` doesn't remove them. Move them with the migration: [From react-native-keychain](../migration/from-react-native-keychain#data), [From expo-secure-store](../migration/from-expo-secure-store#data).
+The package sees only its own items. On iOS its queries are limited to its own mark, so the items of `react-native-keychain` or `expo-secure-store` stay out of sight even under the same service: `getItem` returns `null`, `hasItem` returns `false`, and `clear` doesn't remove them. Move them with the migration: [From react-native-keychain](../migration/from-react-native-keychain#data), [From expo-secure-store](../migration/from-expo-secure-store#data).
 
 ## Why is a string with U+0000 rejected? {#nul}
 
-React Native cuts a string at its first U+0000 on the way to the native side, so the value would come back shorter than it was stored. Rather than lose part of it silently, `setItem`, `setItemSync` and `setCredentials` throw `INVALID_ARGUMENT` for a string with U+0000, and so does a `label` with one. Binary data, U+0000 included, goes in bytes: `setBytes` and `getBytes`.
-
-## Is an empty label the same as no label? {#empty-label}
-
-No. `''` is a label: `getItemInfo` reports `label: ''`. Without a label, `label` isn't in the result at all. A write without `label` removes the item's label.
+React Native cuts a string at its first U+0000 on the way to the native side, so the value would come back shorter than it was stored. Rather than lose part of it silently, `setItem`, `setItemSync` and `setCredentials` throw `INVALID_ARGUMENT` for a string with U+0000, and so does a username or a password with one. Binary data, U+0000 included, goes in bytes: `setBytes` and `getBytes`.
 
 ## When is the result null, and when is it an error? {#null}
 

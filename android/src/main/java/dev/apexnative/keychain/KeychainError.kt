@@ -14,7 +14,6 @@ import javax.crypto.BadPaddingException
 /** The codes of `KeychainError`: the `code` a promise rejects with, and a synchronous `Failure`'s. */
 enum class KeychainErrorCode {
     USER_CANCELED,
-    USER_FALLBACK,
     SYSTEM_CANCELED,
     AUTH_FAILED,
     LOCKOUT,

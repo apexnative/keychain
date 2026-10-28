@@ -56,7 +56,7 @@ By default the mock is an iPhone with Face ID enrolled and a passcode:
 | `passcodeSet` | `true` | Whether the device has a passcode; biometry needs one too, as on a phone |
 | `faceIDUsageDescription` | `true` | Whether the app has `NSFaceIDUsageDescription` in its `Info.plist` |
 | `androidApi` | `null` | The Android API level; `null` is a device that isn't an Android one |
-| `hardwareSecurityLevel` | `null` | What `getHardwareSecurityLevel` returns (`null` as on iOS) and `getItemInfo` reports as `android.securityLevel` |
+| `hardwareSecurityLevel` | `null` | What `getHardwareSecurityLevel` returns (`null` as on iOS) and the level of new keys |
 
 [`setDevice`](/api/jest/keychainMock#setDevice) changes the fields it is given and keeps the rest. The device decides what `canUseAccessControl` answers and whether a protected write succeeds, as a phone would:
 
@@ -147,7 +147,7 @@ test('the refresh token comes out after the prompt', async () => {
 });
 ```
 
-What never prompts on a device records nothing here either: writes, `hasItem`, `getItemInfo`, `getAllKeys`, `clear`, and reads of items without protection. A sync read of a protected item throws `AUTH_REQUIRED`, as on a device.
+What never prompts on a device records nothing here either: writes, `hasItem`, `clear`, and reads of items without protection. A sync read of a protected item throws `AUTH_REQUIRED`, as on a device.
 
 ### How a prompt ends {#failures}
 
@@ -169,7 +169,7 @@ test('a lockout, then Face ID works again', async () => {
 });
 ```
 
-The code is any `KeychainErrorCode` (anything else throws a `TypeError`). The ones a prompt ends with on a device are `USER_CANCELED`, `USER_FALLBACK`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT` and `KEY_INVALIDATED`; `KEY_INVALIDATED` also deletes the item, as the device does. A failure waits in the queue until a prompt comes: writes and reads of items without protection don't use it up.
+The code is any `KeychainErrorCode` (anything else throws a `TypeError`). The ones a prompt ends with on a device are `USER_CANCELED`, `SYSTEM_CANCELED`, `AUTH_FAILED`, `LOCKOUT`, `LOCKOUT_PERMANENT` and `KEY_INVALIDATED`; `KEY_INVALIDATED` also deletes the item, as the device does. A failure waits in the queue until a prompt comes: writes and reads of items without protection don't use it up.
 
 ### Changed biometrics {#biometry-change}
 

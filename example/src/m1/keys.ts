@@ -32,8 +32,10 @@ export const keys: Scenario = {
         return store.getItem(key);
       });
     }
-    await t.expect('getAllKeys lists them all', KEYS.map(([, key]) => key).sort(), () =>
-      store.getAllKeys()
+    await t.expect(
+      'hasItem finds them all',
+      KEYS.map(() => true),
+      () => Promise.all(KEYS.map(([, key]) => store.hasItem(key)))
     );
 
     const near = ['key', 'Key', 'key ', 'ключ', 'Ключ', 'é', 'é'];
@@ -43,9 +45,10 @@ export const keys: Scenario = {
       near.map((key) => `near ${JSON.stringify(key)}`),
       () => Promise.all(near.map((key) => store.getItem(key)))
     );
-    await t.expect('and are listed apart', near.length, async () => {
-      const listed = await store.getAllKeys();
-      return near.filter((key) => listed.includes(key)).length;
-    });
+    await t.expect(
+      'and are found apart',
+      near.map(() => true),
+      () => Promise.all(near.map((key) => store.hasItem(key)))
+    );
   },
 };

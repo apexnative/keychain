@@ -58,14 +58,13 @@ export const sync: Scenario = {
         return store.getItemSync('binary');
       }
     );
-    await t.expect('a label written by setItemSync', 'Sync label', async () => {
-      store.setItemSync('labeled', 'v', { label: 'Sync label' });
-      return (await store.getItemInfo('labeled'))?.label;
+    await t.expect('setItemSync takes options', 'v', () => {
+      store.setItemSync('optioned', 'v', { accessible: Accessible.WhenUnlocked });
+      return store.getItemSync('optioned');
     });
-    await t.expect('accessible written by setItemSync', Accessible.WhenUnlocked, async () => {
-      store.setItemSync('labeled', 'v', { accessible: Accessible.WhenUnlocked });
-      return (await store.getItemInfo('labeled'))?.accessible;
-    });
+    await t.fails('and checks them', KeychainErrorCode.InvalidArgument, () =>
+      store.setItemSync('optioned', 'v', { accessible: 'always' } as never)
+    );
 
     await t.expect('removeItemSync, then hasItem', false, async () => {
       store.removeItemSync('a');

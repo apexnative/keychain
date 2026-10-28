@@ -68,7 +68,7 @@ A [MigrationReport](./types#migrationreport): the keys moved, the items skipped 
 | rnk's default service | The credentials of the default storage, [`keychain`](/api/storage/keychain) | The service |
 | Internet credentials of server `X` | The credentials of `into` with `server: X`: `into.getCredentials({ server: X })` | `X` |
 
-The username becomes the label of the item, readable without a prompt; the password its value. The same layout is what [`/compat`](/api/compat/overview) reads and writes, so an app can move the data and keep rnk's calls for a while.
+The username is kept with the password in one item. The same layout is what [`/compat`](/api/compat/overview) reads and writes, so an app can move the data and keep rnk's calls for a while.
 
 The new items are written with the defaults of their storage: `afterFirstUnlock`, no access control. A protected rnk item isn't moved here at all.
 

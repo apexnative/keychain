@@ -17,7 +17,6 @@ type Prompt = {
   subtitle?: string;
   description?: string;
   cancel?: string;
-  fallback?: string;
   confirmationRequired?: boolean;
 };
 ```
@@ -27,11 +26,10 @@ The texts of the system prompt that a read of a protected item shows: the `promp
 <Params
   label="Field"
   items={[
-    { name: 'title', type: 'string', text: 'iOS: the reason shown with Face ID or Touch ID (`LAContext.localizedReason`). Android: the title of the prompt.' },
+    { name: 'title', type: 'string', text: 'iOS: the reason (`LAContext.localizedReason`), shown in the alert after a failed scan; Face ID that recognizes the user at once shows no text. Android: the title of the prompt.' },
     { name: 'subtitle', type: 'string', text: 'Android only: the subtitle.' },
     { name: 'description', type: 'string', text: 'Android only: the description.' },
     { name: 'cancel', type: 'string', text: 'The cancel button. iOS: `localizedCancelTitle`. Android: the negative button, shown only for a value without the passcode; with the passcode the system shows its own button to enter it.' },
-    { name: 'fallback', type: 'string', text: 'iOS only: the fallback button after a failed scan (`localizedFallbackTitle`); `\'\'` hides it. For an item of biometrics alone (`biometryAny`, `biometryCurrentSet`), a tap ends the read with `USER_FALLBACK`; for the others, the fallback is the passcode.' },
     { name: 'confirmationRequired', type: 'boolean', default: 'true', text: 'Android only: whether a face match needs a tap to confirm.' },
   ]}
 />
@@ -39,7 +37,7 @@ The texts of the system prompt that a read of a protected item shows: the `promp
 ```ts
 const vault = createKeychain({
   accessControl: AccessControl.BiometryCurrentSet,
-  prompt: { title: 'Unlock your account', cancel: 'Use password', fallback: 'Use password' },
+  prompt: { title: 'Unlock your account', cancel: 'Use password' },
 });
 
 await vault.getItem('refreshToken', { prompt: { title: 'Confirm the payment' } }); // cancel stays

@@ -6,7 +6,7 @@ export const credentials: Scenario = {
   milestone: 'M1',
   title: 'Credentials',
   description:
-    'A user name and a password are one item: the key is credentials (or credentials:<server>), the password the value, the user name the label that getItemInfo shows.',
+    'A user name and a password are one item: the key is credentials (or credentials:<server>), the password the value, the user name kept with it.',
   async run(t) {
     const store = await t.store('credentials');
 
@@ -23,31 +23,21 @@ export const credentials: Scenario = {
       { username: 'ivan@example.com', password: 's3cret' },
       () => store.getCredentials()
     );
-    await t.expect('the key is credentials', ['credentials'], () => store.getAllKeys());
+    await t.expect('the key is credentials', true, () => store.hasItem('credentials'));
     await t.expect('the password is the value', 's3cret', () => store.getItem('credentials'));
-    await t.expect(
-      'the user name is the label',
-      'ivan@example.com',
-      async () => (await store.getItemInfo('credentials'))?.label
-    );
 
     await t.expect('overwritten credentials', { username: 'petr', password: 'new' }, async () => {
       await store.setCredentials({ username: 'petr', password: 'new' });
       return store.getCredentials();
     });
-    await t.expect(
-      'and the label follows',
-      'petr',
-      async () => (await store.getItemInfo('credentials'))?.label
-    );
 
     const server = 'api.example.com';
     await store.setCredentials({ username: 'anna', password: 'pw' }, { server });
     await t.expect('credentials of a server', { username: 'anna', password: 'pw' }, () =>
       store.getCredentials({ server })
     );
-    await t.expect('the key of a server', ['credentials', `credentials:${server}`], () =>
-      store.getAllKeys()
+    await t.expect('the key of a server', [true, true], () =>
+      Promise.all([store.hasItem('credentials'), store.hasItem(`credentials:${server}`)])
     );
     await t.expect(
       "the app credentials are not the server's",
@@ -82,7 +72,7 @@ export const credentials: Scenario = {
 
     await store.setItem('credentials', 'a password with no user name');
     await t.fails(
-      'an item without a label is no credentials',
+      'an item that setCredentials did not write is no credentials',
       KeychainErrorCode.InvalidArgument,
       () => store.getCredentials()
     );

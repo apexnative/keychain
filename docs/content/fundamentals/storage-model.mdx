@@ -1,11 +1,11 @@
 ---
 title: Storage model
-description: 'Services and keys, strings and bytes, options by instance and by call, labels, listing, and credentials.'
+description: 'Services and keys, strings and bytes, options by instance and by call, hasItem and clear, and credentials.'
 ---
 
 import { Os } from '@site/src/components/Intro';
 
-The package is a key/value store, split into services. A service is a namespace with its own defaults; a key names one item in it; an item holds a string or bytes and a few attributes that can be read without a prompt.
+The package is a key/value store, split into services. A service is a namespace with its own defaults; a key names one item in it; an item holds a string or bytes and the protection it was written with.
 
 ## Services and keys {#services}
 
@@ -20,18 +20,18 @@ const vault = createKeychain({ service: 'vault', accessControl: AccessControl.Bi
 const cache = createKeychain({ service: 'cache' });
 ```
 
-Two storages of the same service see the same items; keys of different services never meet. `clear()` and `getAllKeys()` work on one service.
+Two storages of the same service see the same items; keys of different services never meet. `hasItem()` and `clear()` work on one service.
 
 A **key** is a non-empty string of up to 256 characters, any Unicode except U+0000. A key that breaks the rule throws `INVALID_ARGUMENT`; so does a `service` that breaks it.
 
 ### Only its own items {#own-items}
 
-The package sees only the items it wrote. On iOS every query is limited to the package's mark (`kSecAttrCreator`), so the Keychain items of other libraries stay out of sight even when they use the same service: `getItem` returns `null` for them, `getAllKeys` doesn't list them, `clear` doesn't remove them. On Android the package keeps its items in files of its own, which no other library writes.
+The package sees only the items it wrote. On iOS every query is limited to the package's mark (`kSecAttrCreator`), so the Keychain items of other libraries stay out of sight even when they use the same service: `getItem` and `hasItem` find nothing for them, and `clear` doesn't remove them. On Android the package keeps its items in files of its own, which no other library writes.
 
 ```ts
 // react-native-keychain stored a password for the service 'auth' before.
 const auth = createKeychain({ service: 'auth' });
-await auth.getAllKeys(); // [] — rnk's item is there, but not this package's
+await auth.hasItem('password'); // false — rnk's item is there, but not this package's
 ```
 
 A write doesn't overwrite another library's item either: on iOS, `setItem` under a key that another library's item holds in the same service fails with `INVALID_ARGUMENT`, and the other item stays as it was. Use another key, or move the old item first.
@@ -59,14 +59,14 @@ const bytes: Uint8Array | null = await keychain.getBytes('dbKey');
 
 A string value can be any text, the empty string too, except two things that have no faithful way through the bridge to the native side:
 
-- **U+0000.** React Native cuts a string at its first U+0000, so a value would come back shorter than it went in. A string with U+0000 throws `INVALID_ARGUMENT`; so does a `label`, a username or a password with one.
+- **U+0000.** React Native cuts a string at its first U+0000, so a value would come back shorter than it went in. A string with U+0000 throws `INVALID_ARGUMENT`; so does a username or a password with one.
 - **A lone surrogate**, half of a UTF-16 pair. It has no UTF-8 form, and it throws `INVALID_ARGUMENT` too.
 
 Both are binary data in a string's clothes: store such values as bytes, which reach the native side unchanged. Use bytes for binary secrets such as encryption keys, rather than encoding them into a string yourself. There is no hard size limit, but the Keychain and the Keystore are made for small secrets: keep values to tens of kilobytes, and keep large data in an encrypted file whose key lives here (see [A key for MMKV or SQLCipher](../guides/encryption-key)).
 
 ## Nothing stored is null {#null}
 
-`getItem`, `getBytes`, `getItemInfo` and `getCredentials` return `null` when there is no item under the key. That is the only meaning of `null`: an item that exists but can't be read is an error with a code, such as `USER_CANCELED` or `KEY_INVALIDATED`.
+`getItem`, `getBytes` and `getCredentials` return `null` when there is no item under the key. That is the only meaning of `null`: an item that exists but can't be read is an error with a code, such as `USER_CANCELED` or `KEY_INVALIDATED`.
 
 `removeItem` of a key that isn't there does nothing and doesn't throw.
 
@@ -95,58 +95,25 @@ await vault.getItem('pin', { prompt: { title: 'Confirm the payment' } });
 | Options | Of | What they hold |
 | --- | --- | --- |
 | `KeychainOptions` | `createKeychain` | `service`, `accessible`, `accessControl`, `authValidity`, `synchronizable`, `accessGroup`, `prompt`, `android.keyStorage` |
-| `SetOptions` | `setItem`, `setBytes`, `setCredentials` | The protection of the item: `accessible`, `accessControl`, `authValidity`, `synchronizable`, `android`, and a `label` |
+| `SetOptions` | `setItem`, `setBytes`, `setCredentials` | The protection of the item: `accessible`, `accessControl`, `authValidity`, `synchronizable`, `android` |
 | `GetOptions` | `getItem`, `getBytes`, `getCredentials` | The `prompt` of this read |
 
 The protection is set when an item is written and stays with the item: a read uses the protection the item was stored with, whatever the storage's defaults are now. [Protection](./protection) explains every option.
 
-## Labels and item info {#info}
-
-A `label` is a short string stored next to the item, outside the secret. `getItemInfo` reads it and the item's attributes without a prompt, even for an item behind biometrics:
-
-```ts
-await vault.setItem('refreshToken', token, { label: 'ivan@example.com' });
-
-const info = await vault.getItemInfo('refreshToken');
-// {
-//   key: 'refreshToken',
-//   label: 'ivan@example.com',
-//   accessible: 'whenUnlockedThisDeviceOnly',
-//   accessControl: 'biometryCurrentSet',
-//   synchronizable: false,
-//   createdAt: 1730000000000,
-//   modifiedAt: 1730000000000,
-//   android: { securityLevel: 'tee' },
-// }
-```
-
-Every write sets the label: a write with `label` stores it, a write without one removes it. The empty string `''` is a label too, different from none: `getItemInfo` reports `label: ''` for it and leaves `label` out when there is none, on iOS, on Android and in the Jest mock.
-
-```ts
-await vault.setItem('a', '1', { label: '' });
-(await vault.getItemInfo('a'))?.label; // ''
-
-await vault.setItem('a', '2'); // no label: the old one is removed
-(await vault.getItemInfo('a'))?.label; // undefined
-```
-
-A label is text like a value: U+0000 in it throws `INVALID_ARGUMENT`. Don't put secrets in a label: it is readable without authentication by design.
-
-## Listing and clearing {#listing}
+## Checking and clearing {#listing}
 
 These methods never show a prompt, whatever protects the items:
 
 ```ts
 await vault.hasItem('refreshToken'); // true
-await vault.getAllKeys(); // ['pin', 'refreshToken']: sorted
 await vault.clear(); // every item of the service
 ```
 
-`clear()` removes every item of the service; on Android it also deletes the service's Keystore keys.
+`hasItem` answers whether a key has an item, and `clear()` removes every item of the service; on Android it also deletes the service's Keystore keys.
 
 ## Credentials {#credentials}
 
-For a sign-in form, the package has a pair of a username and a password. The pair is one item with the key `credentials`, or `credentials:<server>` when you pass a `server`; the username is kept as the item's label. These are ordinary keys of the storage: `getAllKeys` lists them, and a `setItem('credentials', …)` would replace the pair.
+For a sign-in form, the package has a pair of a username and a password. The pair is one item with the key `credentials`, or `credentials:<server>` when you pass a `server`; the username is kept with the password. This is an ordinary key of the storage: a `setItem('credentials', …)` would replace the pair.
 
 ```ts
 await vault.setCredentials(
@@ -154,11 +121,7 @@ await vault.setCredentials(
   { accessControl: AccessControl.BiometryCurrentSet }
 );
 
-// "Sign in as ivan@example.com": no prompt.
-const info = await vault.getItemInfo('credentials');
-showSignInAs(info?.label);
-
-// The password: the prompt.
+// The username and the password: the prompt.
 const credentials = await vault.getCredentials(); // { username, password } | null
 
 // Several accounts, by server.
@@ -167,9 +130,9 @@ await vault.getCredentials({ server: 'api.example.com' });
 await vault.removeCredentials({ server: 'api.example.com' });
 ```
 
-Because the username is a label, the app can show who is signed in before the user passes the prompt, and ask for the password only when it is needed.
+The username comes back from `getCredentials` together with the password, so for an item with an `accessControl` it is behind the prompt too. An app that wants to show who is signed in before the prompt keeps the username in an unprotected item of its own; [Sign in with Face ID](../guides/biometric-sign-in) does it.
 
-`setCredentials` takes no `label` of its own: the label is the username. The username can't be empty; the password can. Neither can hold U+0000 (`INVALID_ARGUMENT`). `getCredentials` on an item that wasn't written by `setCredentials`, so has no label, throws `INVALID_ARGUMENT` rather than make up a username.
+The username can't be empty; the password can. Neither can hold U+0000 (`INVALID_ARGUMENT`). `getCredentials` on an item that wasn't written by `setCredentials`, so has no username, throws `INVALID_ARGUMENT` rather than make up one.
 
 ## Key names are not secret {#key-names}
 

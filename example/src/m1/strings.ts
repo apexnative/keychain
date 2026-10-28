@@ -36,7 +36,7 @@ export const strings: Scenario = {
       await store.setItem('token', 'second');
       return store.getItem('token');
     });
-    await t.expect('overwriting leaves one key', ['token'], () => store.getAllKeys());
+    await t.expect('overwriting leaves the item', true, () => store.hasItem('token'));
 
     // React Native cuts a string at U+0000 on the bridge, so the wrapper refuses it before anything is written.
     await t.fails('a value with U+0000 is refused', KeychainErrorCode.InvalidArgument, () =>

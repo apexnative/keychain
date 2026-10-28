@@ -86,8 +86,8 @@ try {
 
 ## What's in it
 
-- **Storage:** strings, bytes and credentials by key, in services of their own; `hasItem`, `getItemInfo` and
-  `getAllKeys` without a prompt; `clear`; a synchronous API for startup that never shows a prompt.
+- **Storage:** strings, bytes and credentials by key, in services of their own; `hasItem` without a prompt;
+  `clear`; a synchronous API for startup that never shows a prompt.
 - **Protection:** `accessible` and six values of `accessControl`, a reuse window (`authValidity`), StrongBox on Android,
   iCloud Keychain and shared access groups on iOS.
 - **The device:** `canUseAccessControl` says whether a protection can be used now and why not, before you offer it;

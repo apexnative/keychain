@@ -131,7 +131,7 @@ The options of [`migrateFromExpoSecureStore`](./migrateFromExpoSecureStore#param
 ```ts
 type MigrateItemOptions = {
   prompt?: Prompt;
-  setOptions?: Omit<SetOptions, 'label'>;
+  setOptions?: SetOptions;
   into?: Keychain;
   removeSource?: boolean;
   accessGroup?: string;

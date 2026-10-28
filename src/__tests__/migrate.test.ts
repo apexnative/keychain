@@ -52,7 +52,6 @@ describe('react-native-keychain', () => {
       username: 'ivan',
       password: 'secret',
     });
-    await expect(keychain.getItemInfo('credentials')).resolves.toMatchObject({ label: 'ivan' });
     expect(keychainMock.migrationSources()).toEqual([
       expect.objectContaining({ service: DEFAULT_SERVICE, migrated: true }),
       expect.objectContaining({ service: 'auth', migrated: false }),
@@ -78,11 +77,12 @@ describe('react-native-keychain', () => {
       password: 'p3',
     });
     // 'work' was not named: it is not looked at.
-    await expect(createKeychain({ service: 'work' }).getAllKeys()).resolves.toEqual([]);
+    await expect(createKeychain({ service: 'work' }).hasItem('credentials')).resolves.toBe(false);
     expect(keychainMock.migrationSources().find((item) => item.service === 'work')).toMatchObject({
       migrated: false,
     });
-    await expect(keychain.getAllKeys()).resolves.toEqual(['credentials:api.example.com']);
+    await expect(keychain.hasItem('credentials:api.example.com')).resolves.toBe(true);
+    await expect(keychain.hasItem('credentials')).resolves.toBe(false);
   });
 
   it('writes into the store `into` the internet credentials, and leaves the generic ones to their stores', async () => {
@@ -94,12 +94,10 @@ describe('react-native-keychain', () => {
       servers: ['api.example.com'],
       into: vault,
     });
-    await expect(vault.getAllKeys()).resolves.toEqual(['credentials:api.example.com']);
-    await expect(vault.getItemInfo('credentials:api.example.com')).resolves.toMatchObject({
-      accessible: 'whenUnlockedThisDeviceOnly',
-    });
+    await expect(vault.hasItem('credentials:api.example.com')).resolves.toBe(true);
+    await expect(vault.hasItem('credentials')).resolves.toBe(false);
     await expect(createKeychain({ service: 'auth' }).getCredentials()).resolves.toBeTruthy();
-    await expect(keychain.getAllKeys()).resolves.toEqual([]);
+    await expect(keychain.hasItem('credentials:api.example.com')).resolves.toBe(false);
   });
 
   it('removes the old items when asked, after the new ones are written', async () => {
@@ -201,10 +199,10 @@ describe('react-native-keychain', () => {
       expect.objectContaining({ title: 'Move the password', cancel: 'Not now', key: 'ivan' }),
     ]);
     const store = createKeychain({ service: 'auth' });
-    await expect(store.getItemInfo('credentials')).resolves.toMatchObject({
-      accessControl: 'biometryAny',
-      label: 'ivan',
-    });
+    // The item has the access control: a synchronous read refuses without a prompt.
+    expect(() => store.getItemSync('credentials')).toThrow(
+      expect.objectContaining({ code: 'AUTH_REQUIRED' })
+    );
     expect(keychainMock.migrationSources().map((item) => item.service)).toEqual(['open']);
   });
 
@@ -327,7 +325,8 @@ describe('expo-secure-store', () => {
       removeSource: true,
     });
     expect(report.migrated.sort()).toEqual(['a', 'b']);
-    await expect(vault.getAllKeys()).resolves.toEqual(['a', 'b']);
+    await expect(vault.hasItem('a')).resolves.toBe(true);
+    await expect(vault.hasItem('b')).resolves.toBe(true);
     expect(keychainMock.migrationSources().map((item) => item.account)).toEqual(['c']);
     await expect(
       migrateFromExpoSecureStore({ keychainService: 'one', into: vault })
@@ -358,9 +357,9 @@ describe('expo-secure-store', () => {
       )
     ).resolves.toMatchObject({ migrated: ['locked'] });
     expect(keychainMock.prompts()).toHaveLength(1);
-    await expect(keychain.getItemInfo('locked')).resolves.toMatchObject({
-      accessControl: 'passcode',
-    });
+    expect(() => keychain.getItemSync('locked')).toThrow(
+      expect.objectContaining({ code: 'AUTH_REQUIRED' })
+    );
     await expect(
       migrateItem({ library: 'expoSecureStore', key: 'missing' })
     ).resolves.toMatchObject({

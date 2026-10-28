@@ -1,13 +1,13 @@
 ---
 title: Types of storage
 sidebar_label: Types
-description: 'The options of a write and of a read, what getItemInfo reports, and the credentials with the server they are for.'
+description: 'The options of a write and of a read, and the credentials with the server they are for.'
 hide_title: true
 ---
 
 import { ApiHeader, Params, SeeAlso } from '@site/src/components/Api';
 
-<ApiHeader kind="Types" importName="type SetOptions, type GetOptions, type ItemInfo, type Credentials, type CredentialsOptions" />
+<ApiHeader kind="Types" importName="type SetOptions, type GetOptions, type Credentials, type CredentialsOptions" />
 
 ## SetOptions {#setoptions}
 
@@ -18,11 +18,10 @@ type SetOptions = {
   authValidity?: number;
   synchronizable?: boolean;
   android?: AndroidOptions;
-  label?: string;
 };
 ```
 
-The options of a write: [`setItem`](./methods#setItem), [`setBytes`](./methods#setBytes), [`setItemSync`](./methods#setItemSync), and, without `label`, [`setCredentials`](./methods#setCredentials). Each protection option overrides the storage's for this item; what isn't given comes from the storage, then from the defaults. The combination is checked as a whole: `{ authValidity: 30 }` on a storage of `biometryCurrentSet` throws `INVALID_ARGUMENT`.
+The options of a write: [`setItem`](./methods#setItem), [`setBytes`](./methods#setBytes), [`setItemSync`](./methods#setItemSync), and [`setCredentials`](./methods#setCredentials). Each protection option overrides the storage's for this item; what isn't given comes from the storage, then from the defaults. The combination is checked as a whole: `{ authValidity: 30 }` on a storage of `biometryCurrentSet` throws `INVALID_ARGUMENT`.
 
 <Params
   label="Field"
@@ -32,7 +31,6 @@ The options of a write: [`setItem`](./methods#setItem), [`setBytes`](./methods#s
     { name: 'authValidity', type: 'number', text: 'Seconds one prompt opens the item for. See [KeychainOptions](/api/options/KeychainOptions#auth-validity).' },
     { name: 'synchronizable', type: 'boolean', text: 'iOS: keep the item in iCloud Keychain. See [KeychainOptions](/api/options/KeychainOptions#synchronizable).' },
     { name: 'android', type: 'AndroidOptions', text: 'Where Android keeps the item\'s key. See [KeychainOptions](/api/options/KeychainOptions#android).' },
-    { name: 'label', type: 'string', text: 'A text that isn\'t secret, stored next to the item and readable without a prompt through [`getItemInfo`](./methods#getItemInfo). A write without one removes the label; `\'\'` is a label, not the absence of one. Can\'t contain U+0000. Not taken by `setCredentials`, whose label is the username.' },
   ]}
 />
 
@@ -57,39 +55,6 @@ The options of a read: [`getItem`](./methods#getItem), [`getBytes`](./methods#ge
 
 A read uses the protection the item was written with; there is nothing else to choose.
 
-## ItemInfo {#iteminfo}
-
-```ts
-type ItemInfo = {
-  key: string;
-  label?: string;
-  accessible: Accessible;
-  accessControl: AccessControl;
-  synchronizable: boolean;
-  createdAt: number;
-  modifiedAt: number;
-  android?: {
-    securityLevel: HardwareSecurityLevel;
-  };
-};
-```
-
-What [`getItemInfo`](./methods#getItemInfo) reports about an item, without a prompt.
-
-<Params
-  label="Field"
-  items={[
-    { name: 'key', type: 'string', required: true, text: 'The key of the item.' },
-    { name: 'label', type: 'string', text: 'The item\'s label. Absent when the item has none; `\'\'` when the label is the empty string. For credentials, the username.' },
-    { name: 'accessible', type: 'Accessible', required: true, text: 'When the item can be read, as it was written.' },
-    { name: 'accessControl', type: 'AccessControl', required: true, text: 'What unlocks the item, as it was written.' },
-    { name: 'synchronizable', type: 'boolean', required: true, text: 'Whether the item is in iCloud Keychain. Always `false` on Android.' },
-    { name: 'createdAt', type: 'number', required: true, text: 'When the item was first written, in milliseconds since the Unix epoch. A write that replaces the item keeps it.' },
-    { name: 'modifiedAt', type: 'number', required: true, text: 'When the item was last written, in milliseconds since the Unix epoch.' },
-    { name: 'android', type: '{ securityLevel }', text: 'Android only: where the item\'s Keystore key lives, `\'strongbox\'`, `\'tee\'` or `\'software\'`, measured when the item was written.' },
-  ]}
-/>
-
 ## Credentials {#credentials}
 
 ```ts
@@ -104,7 +69,7 @@ A username and a password, written by [`setCredentials`](./methods#setCredential
 <Params
   label="Field"
   items={[
-    { name: 'username', type: 'string', required: true, text: 'Kept as the item\'s label, readable without a prompt. Can\'t be empty or contain U+0000.' },
+    { name: 'username', type: 'string', required: true, text: 'Kept with the password in the item, so read back after the prompt for a protected one. Can\'t be empty or contain U+0000.' },
     { name: 'password', type: 'string', required: true, text: 'Kept as the item\'s value. May be empty; can\'t contain U+0000.' },
   ]}
 />
@@ -132,6 +97,6 @@ Which credentials: the app's own, or those of a server.
   items={[
     { name: 'Keychain', text: 'The methods that take these types.', to: '/api/storage/methods' },
     { name: 'KeychainOptions', text: 'What each protection option means.', to: '/api/options/KeychainOptions' },
-    { name: 'Storage model', text: 'Labels, item info and credentials, explained.', to: '/docs/fundamentals/storage-model#info' },
+    { name: 'Storage model', text: 'Services, values and credentials, explained.', to: '/docs/fundamentals/storage-model' },
   ]}
 />

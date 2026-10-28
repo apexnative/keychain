@@ -45,7 +45,6 @@ const SET_OPTIONS = [
   'authValidity',
   'synchronizable',
   'android',
-  'label',
 ] as const;
 const GET_OPTIONS = ['prompt'] as const;
 const PROMPT_OPTIONS = [
@@ -53,7 +52,6 @@ const PROMPT_OPTIONS = [
   'subtitle',
   'description',
   'cancel',
-  'fallback',
   'confirmationRequired',
 ] as const;
 const ANDROID_OPTIONS = ['keyStorage'] as const;
@@ -244,7 +242,6 @@ export function parsePrompt(value: unknown, what = 'prompt'): Prompt | undefined
     subtitle: checkString(prompt.subtitle, `${what}.subtitle`),
     description: checkString(prompt.description, `${what}.description`),
     cancel: checkString(prompt.cancel, `${what}.cancel`),
-    fallback: checkString(prompt.fallback, `${what}.fallback`),
     confirmationRequired: checkBoolean(prompt.confirmationRequired, `${what}.confirmationRequired`),
   });
 }
@@ -290,7 +287,6 @@ export function parseSetOptions(
     authValidity: checkAuthValidity(options.authValidity),
     synchronizable: checkBoolean(options.synchronizable, 'synchronizable'),
     android: parseAndroid(options.android),
-    label: options.label === undefined ? undefined : checkText(options.label, 'label'),
   });
 }
 
@@ -322,7 +318,10 @@ let warnedSynchronizable = false;
  * The complete options of a write: the call's over the store's over the defaults. Throws on the forbidden
  * combinations, on both platforms alike, so that code that works on one works on the other.
  */
-export function resolveWrite(store: KeychainOptions, call: SetOptions): Native.WriteOptions {
+export function resolveWrite(
+  store: KeychainOptions,
+  call: SetOptions & { label?: string }
+): Native.WriteOptions {
   const accessible = call.accessible ?? store.accessible ?? DEFAULTS.accessible;
   const accessControl = call.accessControl ?? store.accessControl ?? DEFAULTS.accessControl;
   const authValidity = call.authValidity ?? store.authValidity ?? DEFAULTS.authValidity;

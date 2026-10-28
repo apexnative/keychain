@@ -8,7 +8,7 @@ import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
 
 <ApiHeader kind="Constants" importName="AccessControl" />
 
-`AccessControl` is the value of the [`accessControl`](./KeychainOptions#access-control) option, of [`canUseAccessControl`](/api/device/canUseAccessControl), and what [`getItemInfo`](/api/storage/methods#getItemInfo) reports. Anything but `None` locks the value with a key the system releases only after the user passes the prompt: a read shows the prompt, a write never does. `AccessControl.BiometryCurrentSet` is the string `'biometryCurrentSet'`; both forms are accepted.
+`AccessControl` is the value of the [`accessControl`](./KeychainOptions#access-control) option and of [`canUseAccessControl`](/api/device/canUseAccessControl). Anything but `None` locks the value with a key the system releases only after the user passes the prompt: a read shows the prompt, a write never does. `AccessControl.BiometryCurrentSet` is the string `'biometryCurrentSet'`; both forms are accepted.
 
 ## Usage {#usage}
 

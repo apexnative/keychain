@@ -47,8 +47,9 @@ export const nativeValidation: Scenario = {
       native.setItem(STORE, 'b', '***not base64***', 'base64', OPTIONS)
     );
 
-    await t.expect('only the item written on purpose is there', ['k'], async () => [
-      ...(await native.getAllKeys(STORE)),
+    await t.expect('only the item written on purpose is there', [true, false], async () => [
+      await native.hasItem(STORE, 'k'),
+      await native.hasItem(STORE, 'b'),
     ]);
     await t.expect(
       'and it was not changed',

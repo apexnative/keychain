@@ -8,15 +8,19 @@ import { ApiHeader, Facts, SeeAlso } from '@site/src/components/Api';
 
 <ApiHeader kind="Constants" importName="HardwareSecurityLevel" />
 
-What [`getHardwareSecurityLevel`](./getHardwareSecurityLevel) answers for the device, and what [`getItemInfo`](/api/storage/methods#getItemInfo) reports as `android.securityLevel` for an item.
+What [`getHardwareSecurityLevel`](./getHardwareSecurityLevel) answers for the device.
 
 ## Usage {#usage}
 
 ```ts
-import { HardwareSecurityLevel, keychain } from '@apexnative/keychain';
+import {
+  HardwareSecurityLevel,
+  getHardwareSecurityLevel,
+} from '@apexnative/keychain';
 
-const info = await keychain.getItemInfo('accessToken');
-const inHardware = info?.android?.securityLevel !== HardwareSecurityLevel.Software;
+const level = await getHardwareSecurityLevel(); // null on iOS
+const inHardware =
+  level !== null && level !== HardwareSecurityLevel.Software;
 ```
 
 ## Signature {#signature}

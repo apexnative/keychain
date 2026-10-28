@@ -47,7 +47,7 @@ Every option is optional. An option name that isn't one of these, or a value tha
 
 <Facts type="string" defaultValue="the bundle identifier / the application id" />
 
-The name of the storage. Items of one service are one storage: `getAllKeys()` lists them, `clear()` removes them. Two storages of the same service see the same items. A non-empty string of up to 256 characters, without U+0000.
+The name of the storage. Items of one service are one storage: `clear()` removes them. Two storages of the same service see the same items. A non-empty string of up to 256 characters, without U+0000.
 
 ```ts
 createKeychain({ service: 'vault' });
