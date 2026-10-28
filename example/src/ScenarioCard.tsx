@@ -3,7 +3,8 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Row, Run, Scenario } from './harness/types';
 import { ROW_MARKS, STATE_COLORS, STATE_LABELS, type Theme } from './theme';
 
-function Expectation({ row, theme }: { row: Row; theme: Theme }) {
+/** One check of a run: its name, what was expected and what came, and the detail of a failure. */
+export function Expectation({ row, theme }: { row: Row; theme: Theme }) {
   return (
     <View
       style={[

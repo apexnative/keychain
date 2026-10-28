@@ -1,5 +1,5 @@
 PODS:
-  - ApexKeychain (1.0.0-rc.0):
+  - ApexKeychain (1.0.0-rc.2):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -21,7 +21,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ApexKeychain/TestHost (1.0.0-rc.0):
+  - ApexKeychain/TestHost (1.0.0-rc.2):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -43,7 +43,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ApexKeychain/Tests (1.0.0-rc.0):
+  - ApexKeychain/Tests (1.0.0-rc.2):
     - ApexKeychain/TestHost
     - hermes-engine
     - RCTRequired
@@ -2015,7 +2015,7 @@ EXTERNAL SOURCES:
     :path: build/rncore-facades/Yoga
 
 SPEC CHECKSUMS:
-  ApexKeychain: 22d13f43d9c2b473c294364fa9ca046cb89f1292
+  ApexKeychain: ae8a121c19436eda3a11173c849e1e8fa0b2e7c6
   boost: 8502bfdc46e2804408af2e163049ece181009af4
   DoubleConversion: 501a575c40c0b50c89685762dd3e415e6bb26fb0
   fast_float: 7c925d1cebf8328d4018d061f49377e9f887e3b4
