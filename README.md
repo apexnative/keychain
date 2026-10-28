@@ -30,8 +30,8 @@ of the Android Keystore. Tokens, passwords and encryption keys go in by key and 
 behind Face ID, a fingerprint or the device passcode, and then the operating system, not your code, decides when it
 comes out. Every option means the same on iOS and Android; one the device can't give is an error, never a weaker item.
 
-> **Status:** release candidate. `1.0.0-rc.0` is on npm under the `rc` tag, and under `latest` until 1.0.0. The API is
-> final, except the migration from other libraries (`/migrate`); only fixes land until the release.
+> **Status:** stable, version 1. The migration from other libraries (`/migrate`) is experimental: its API can still
+> change in a minor release.
 
 ## Why
 

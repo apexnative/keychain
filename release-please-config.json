@@ -6,9 +6,7 @@
   "packages": {
     ".": {
       "changelog-path": "CHANGELOG.md",
-      "versioning": "prerelease",
-      "prerelease": true,
-      "prerelease-type": "rc"
+      "prerelease": false
     }
   }
 }
