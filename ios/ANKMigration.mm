@@ -1,4 +1,5 @@
 #import "ANKMigration.h"
+#import "ANKDevice.h"
 #import "ANKError.h"
 #import "ANKKeychainStore.h"
 
@@ -29,12 +30,6 @@ static NSArray<NSString *> *ANKMark(ANKMigrationKind kind,
 static BOOL ANKFail(NSError **error, NSError *failure) {
     if (error != NULL) *error = failure;
     return NO;
-}
-
-static LAContext *ANKSilentContext(void) {
-    LAContext *context = [[LAContext alloc] init];
-    context.interactionNotAllowed = YES;
-    return context;
 }
 
 @interface ANKMigrationSource ()
@@ -82,7 +77,9 @@ static LAContext *ANKSilentContext(void) {
 #pragma mark - The Keychain
 
 // The items of a service or a server as a library wrote them, or the one with the account (a string, or the bytes
-// expo-secure-store gives), synchronized or not, without a prompt.
+// expo-secure-store gives), synchronized or not. Never sent as it is: on a device, a query that matches a protected
+// item without a context shows the system's prompt. A listing skips protected items, a read of the value and a delete
+// add a context.
 static NSMutableDictionary *ANKQuery(ANKMigrationKind kind, NSString *service, id account, NSString *accessGroup) {
     NSMutableDictionary *query = [NSMutableDictionary dictionary];
     if (kind == ANKMigrationKindInternetPassword) {
@@ -95,8 +92,15 @@ static NSMutableDictionary *ANKQuery(ANKMigrationKind kind, NSString *service, i
     if (account != nil) query[(__bridge id)kSecAttrAccount] = account;
     if (accessGroup != nil) query[(__bridge id)kSecAttrAccessGroup] = accessGroup;
     query[(__bridge id)kSecAttrSynchronizable] = (__bridge id)kSecAttrSynchronizableAny;
-    query[(__bridge id)kSecUseAuthenticationContext] = ANKSilentContext();
     query[(__bridge id)kSecUseDataProtectionKeychain] = @YES;
+    return query;
+}
+
+// The item of expo-secure-store with the key in a Keychain service of it: its key is its kSecAttrGeneric too, as its
+// own queries say, which no item of the package has (its metadata is there).
+static NSMutableDictionary *ANKExpoQuery(NSString *service, NSData *key, NSString *accessGroup) {
+    NSMutableDictionary *query = ANKQuery(ANKMigrationKindSecureStore, service, key, accessGroup);
+    query[(__bridge id)kSecAttrGeneric] = key;
     return query;
 }
 
@@ -126,19 +130,6 @@ static BOOL ANKIsSourceItem(NSDictionary *attributes, BOOL expoWithoutSuffix) {
     return [attributes[(__bridge id)kSecAttrGeneric] isEqual:bytes];
 }
 
-// The attributes of the items of the query; an empty list when there are none.
-static NSArray<NSDictionary *> *ANKAttributes(NSMutableDictionary *query, NSError **error) {
-    query[(__bridge id)kSecReturnAttributes] = @YES;
-    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitAll;
-    CFTypeRef result = NULL;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
-    NSArray<NSDictionary *> *items = CFBridgingRelease(result);
-    if (status == errSecSuccess) return items;
-    if (status == errSecItemNotFound) return @[];
-    ANKFail(error, [ANKError errorWithStatus:status action:@"couldn't look for the items to migrate"]);
-    return nil;
-}
-
 #if TARGET_OS_SIMULATOR
 // The simulator's Keychain enforces no access control, so its answer can't say whether a device would ask. The item's
 // access control does: a constraint (`od(…)`) shows in its description only.
@@ -150,17 +141,43 @@ static BOOL ANKHasConstraints(NSDictionary *attributes) {
 }
 #endif
 
-// The value of the one item of the query; nil without an error when it's gone. Without a context, an item that needs a
-// prompt fails with AUTH_REQUIRED.
+// The attributes of the items of the query that need no authentication; an empty list when there are none. The
+// Keychain skips the others (kSecUseAuthenticationUISkip): their attributes need a prompt on a device. The simulator
+// lists them, and they are left out as a device leaves them.
+static NSArray<NSDictionary *> *ANKAttributes(NSMutableDictionary *query, NSError **error) {
+    query[(__bridge id)kSecUseAuthenticationUI] = (__bridge id)kSecUseAuthenticationUISkip;
+    query[(__bridge id)kSecReturnAttributes] = @YES;
+    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitAll;
+    CFTypeRef result = NULL;
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
+    NSArray<NSDictionary *> *items = CFBridgingRelease(result);
+    if (status == errSecItemNotFound) return @[];
+    if (status != errSecSuccess) {
+        ANKFail(error, [ANKError errorWithStatus:status action:@"couldn't look for the items to migrate"]);
+        return nil;
+    }
+#if TARGET_OS_SIMULATOR
+    NSMutableArray<NSDictionary *> *open = [NSMutableArray arrayWithCapacity:items.count];
+    for (NSDictionary *attributes in items) {
+        if (!ANKHasConstraints(attributes)) [open addObject:attributes];
+    }
+    items = open;
+#endif
+    return items;
+}
+
+// The value of the one item of the query; nil without an error when it's gone. Without a context, the read can't
+// prompt: an item that needs a prompt fails with AUTH_REQUIRED, one the locked device keeps with
+// INTERACTION_NOT_ALLOWED. With one, the Keychain may show its prompt.
 static NSData *ANKData(NSMutableDictionary *query, LAContext *context, NSError **error) {
-    if (context != nil) query[(__bridge id)kSecUseAuthenticationContext] = context;
+    query[(__bridge id)kSecUseAuthenticationContext] = context ?: ANKSilentContext();
     query[(__bridge id)kSecReturnAttributes] = @YES;
     query[(__bridge id)kSecReturnData] = @YES;
     query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
     CFTypeRef result = NULL;
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
     NSDictionary *found = CFBridgingRelease(result);
-    BOOL needsPrompt = context == nil && status == errSecInteractionNotAllowed;
+    BOOL needsPrompt = context == nil && status == errSecInteractionNotAllowed && ANKDevice.isProtectedDataAvailable;
 #if TARGET_OS_SIMULATOR
     needsPrompt = needsPrompt || (context == nil && status == errSecSuccess && ANKHasConstraints(found));
 #endif
@@ -255,22 +272,25 @@ static NSData *ANKData(NSMutableDictionary *query, LAContext *context, NSError *
     return sources;
 }
 
-// The query of the item the source names: for expo-secure-store, the variant its getItemAsync reads. Nil without an
-// error when the item is gone.
+// The query of the item the source names: for expo-secure-store, the variant its getItemAsync reads, found by silent
+// probes, which read nothing of a protected item. Nil without an error when the item is gone.
 + (NSMutableDictionary *)queryOfSource:(ANKMigrationSource *)source error:(NSError **)error {
     if (source.kind != ANKMigrationKindSecureStore) {
         return ANKQuery(source.kind, source.service, source.account, source.accessGroup);
     }
     NSData *key = [source.account dataUsingEncoding:NSUTF8StringEncoding];
     for (NSString *service in ANKExpoServices(source.service)) {
-        NSArray<NSDictionary *> *items =
-            ANKAttributes(ANKQuery(source.kind, service, key, source.accessGroup), error);
-        if (items == nil) return nil;
-        BOOL withoutSuffix = [service isEqualToString:source.service];
-        for (NSDictionary *attributes in items) {
-            if (ANKIsSourceItem(attributes, withoutSuffix)) {
-                return ANKQuery(source.kind, service, key, attributes[(__bridge id)kSecAttrAccessGroup]);
-            }
+        NSMutableDictionary *probe = ANKExpoQuery(service, key, source.accessGroup);
+        probe[(__bridge id)kSecUseAuthenticationContext] = ANKSilentContext();
+        probe[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
+        OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)probe, NULL);
+        // errSecInteractionNotAllowed: there is one, its access control keeps it.
+        if (status == errSecSuccess || status == errSecInteractionNotAllowed) {
+            return ANKExpoQuery(service, key, source.accessGroup);
+        }
+        if (status != errSecItemNotFound) {
+            ANKFail(error, [ANKError errorWithStatus:status action:@"couldn't look for the item to migrate"]);
+            return nil;
         }
     }
     if (error != NULL) *error = nil;
@@ -282,22 +302,6 @@ static NSData *ANKData(NSMutableDictionary *query, LAContext *context, NSError *
     return query != nil ? ANKData(query, context, error) : nil;
 }
 
-+ (SecAccessControlRef)copyAccessControlOfSource:(ANKMigrationSource *)source error:(NSError **)error {
-    NSMutableDictionary *query = [self queryOfSource:source error:error];
-    if (query == nil) return NULL;
-    query[(__bridge id)kSecReturnAttributes] = @YES;
-    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
-    CFTypeRef result = NULL;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
-    NSDictionary *attributes = CFBridgingRelease(result);
-    if (status != errSecSuccess && status != errSecItemNotFound) {
-        ANKFail(error, [ANKError errorWithStatus:status action:@"couldn't read the item to migrate"]);
-        return NULL;
-    }
-    id accessControl = attributes[(__bridge id)kSecAttrAccessControl];
-    return accessControl != nil ? (SecAccessControlRef)CFRetain((__bridge CFTypeRef)accessControl) : NULL;
-}
-
 + (BOOL)finishSource:(ANKMigrationSource *)source removeSource:(BOOL)removeSource error:(NSError **)error {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSMutableArray *marks = [[defaults arrayForKey:ANKMigratedKey] ?: @[] mutableCopy];
@@ -306,25 +310,20 @@ static NSData *ANKData(NSMutableDictionary *query, LAContext *context, NSError *
         [defaults setObject:marks forKey:ANKMigratedKey];
         return YES;
     }
-    // Every variant of an expo-secure-store key, as its deleteItemAsync does.
+    // Every variant of an expo-secure-store key, as its deleteItemAsync does: deleted without reading them, so a
+    // protected one goes without a prompt. The first versions' service may hold other items: only those of
+    // expo-secure-store's shape go.
     NSMutableArray<NSMutableDictionary *> *queries = [NSMutableArray array];
     if (source.kind != ANKMigrationKindSecureStore) {
         [queries addObject:ANKQuery(source.kind, source.service, source.account, source.accessGroup)];
     } else {
         NSData *key = [source.account dataUsingEncoding:NSUTF8StringEncoding];
         for (NSString *service in ANKExpoServices(source.service)) {
-            // The first versions' service may hold other items: only those of expo-secure-store's shape go.
-            BOOL withoutSuffix = [service isEqualToString:source.service];
-            NSArray<NSDictionary *> *items =
-                ANKAttributes(ANKQuery(source.kind, service, key, source.accessGroup), error);
-            if (items == nil) return NO;
-            for (NSDictionary *attributes in items) {
-                if (!ANKIsSourceItem(attributes, withoutSuffix)) continue;
-                [queries addObject:ANKQuery(source.kind, service, key, attributes[(__bridge id)kSecAttrAccessGroup])];
-            }
+            [queries addObject:ANKExpoQuery(service, key, source.accessGroup)];
         }
     }
     for (NSMutableDictionary *query in queries) {
+        query[(__bridge id)kSecUseAuthenticationContext] = ANKSilentContext();
         OSStatus status = SecItemDelete((__bridge CFDictionaryRef)query);
         if (status != errSecSuccess && status != errSecItemNotFound) {
             return ANKFail(error, [ANKError errorWithStatus:status action:@"couldn't delete the migrated item"]);

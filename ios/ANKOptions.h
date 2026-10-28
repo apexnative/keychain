@@ -91,12 +91,8 @@ NSString *_Nullable ANKValueOfData(NSData *data, ANKEncoding encoding, NSError *
 @property (nonatomic, readonly, copy, nullable) NSString *title;
 /// `localizedCancelTitle`; nil — the system's.
 @property (nonatomic, readonly, copy, nullable) NSString *cancel;
-/// `localizedFallbackTitle`; nil — the system's, '' — no button.
-@property (nonatomic, readonly, copy, nullable) NSString *fallback;
 
-- (instancetype)initWithTitle:(nullable NSString *)title
-                       cancel:(nullable NSString *)cancel
-                     fallback:(nullable NSString *)fallback NS_DESIGNATED_INITIALIZER;
+- (instancetype)initWithTitle:(nullable NSString *)title cancel:(nullable NSString *)cancel NS_DESIGNATED_INITIALIZER;
 - (instancetype)init NS_UNAVAILABLE;
 
 @end

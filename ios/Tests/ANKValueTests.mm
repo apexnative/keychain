@@ -241,7 +241,7 @@
 - (void)testLAErrorsHaveTheCodesOfTheSpec {
     NSDictionary<NSNumber *, ANKErrorCode> *codes = @{
         @(LAErrorUserCancel) : ANKErrorUserCanceled,
-        @(LAErrorUserFallback) : ANKErrorUserFallback,
+        @(LAErrorUserFallback) : ANKErrorUserCanceled,
         @(LAErrorSystemCancel) : ANKErrorSystemCanceled,
         @(LAErrorAppCancel) : ANKErrorSystemCanceled,
         @(LAErrorAuthenticationFailed) : ANKErrorAuthFailed,
@@ -345,17 +345,19 @@
 
 - (void)testThePromptsTextsAreOnItsContext {
     LAContext *context = [ANKAuthenticator contextForPrompt:[[ANKPrompt alloc] initWithTitle:@"Sign in"
-                                                                                      cancel:@"Not now"
-                                                                                    fallback:@"Use password"]];
+                                                                                      cancel:@"Not now"]];
+    // The Keychain's prompt takes its reason from the context: the read passes no other.
+    XCTAssertEqualObjects(context.localizedReason, @"Sign in");
     XCTAssertEqualObjects(context.localizedCancelTitle, @"Not now");
-    XCTAssertEqualObjects(context.localizedFallbackTitle, @"Use password");
+    // The fallback button is always hidden: a tap on it would come back as a failed scan.
+    XCTAssertEqualObjects(context.localizedFallbackTitle, @"");
+    XCTAssertFalse(context.interactionNotAllowed);
 
-    // '' hides the fallback button; nil leaves the system's texts.
-    context = [ANKAuthenticator contextForPrompt:[[ANKPrompt alloc] initWithTitle:nil cancel:nil fallback:@""]];
+    // nil leaves the system's cancel text, and the reason is the package's default.
+    context = [ANKAuthenticator contextForPrompt:[[ANKPrompt alloc] initWithTitle:nil cancel:nil]];
     XCTAssertEqualObjects(context.localizedFallbackTitle, @"");
     XCTAssertNil(context.localizedCancelTitle);
-    context = [ANKAuthenticator contextForPrompt:[[ANKPrompt alloc] initWithTitle:nil cancel:nil fallback:nil]];
-    XCTAssertNil(context.localizedFallbackTitle);
+    XCTAssertEqualObjects(context.localizedReason, @"Authenticate to unlock the saved data.");
 }
 
 @end

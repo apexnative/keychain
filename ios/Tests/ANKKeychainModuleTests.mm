@@ -261,7 +261,7 @@ static NSDictionary *ANKOptions(NSDictionary *changes = @{}) {
 
 #pragma mark - Access control
 
-- (void)testAProtectedItemNeedsAPromptOnlyForItsValue {
+- (void)testAProtectedItemIsNeverReadWithoutAPrompt {
     [self requireAccessControl:@"biometryAny"];
     ANKPromise *set = [self setItem:@"secret"
                               value:@"locked"
@@ -269,16 +269,18 @@ static NSDictionary *ANKOptions(NSDictionary *changes = @{}) {
                             options:ANKOptions(@{@"accessControl" : @"biometryAny", @"label" : @"user"})];
     XCTAssertTrue(set.resolved, @"%@", set.message);
 
+    // On a device even its attributes need the user: whatever can't prompt answers AUTH_REQUIRED or leaves it out,
+    // and only whether it's there is known.
     JS::NativeApexKeychain::Store store(_store);
     XCTAssertEqualObjects([_module getItemSync:store key:@"secret"][@"error"][@"code"], ANKErrorAuthRequired);
     XCTAssertEqualObjects([_module hasItemSync:store key:@"secret"], @{@"value" : @YES});
     ANKPromise *info = [ANKPromise new];
     [_module getItemInfo:store key:@"secret" resolve:info.resolve reject:info.reject];
-    XCTAssertEqualObjects(info.value[@"accessControl"], @"biometryAny");
-    XCTAssertEqualObjects(info.value[@"label"], @"user");
+    XCTAssertEqualObjects(info.code, ANKErrorAuthRequired, @"%@", info.value);
+    [self set:@"open" value:@"open"];
     ANKPromise *keys = [ANKPromise new];
     [_module getAllKeys:store resolve:keys.resolve reject:keys.reject];
-    XCTAssertEqualObjects(keys.value, @[ @"secret" ]);
+    XCTAssertEqualObjects(keys.value, @[ @"open" ]);
     // A write over it shows no prompt either.
     JS::NativeApexKeychain::WriteOptions open(ANKOptions());
     XCTAssertEqualObjects([_module setItemSync:store key:@"secret" value:@"open" options:open], @{});

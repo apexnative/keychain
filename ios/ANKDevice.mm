@@ -1,10 +1,19 @@
 #import "ANKDevice.h"
 #import "ANKError.h"
 
+#import <React/RCTUtils.h>
+
 #import <LocalAuthentication/LocalAuthentication.h>
+#import <UIKit/UIKit.h>
+
+#import <atomic>
 
 static NSDictionary *ANKTestInfoDictionary;
 static id ANKTestBiometryState;
+
+// Whether protected data is available, as UIKit said last: 1, 0, or -1 before it said anything. UIApplication answers
+// on the main thread only, and the Keychain calls run off it.
+static std::atomic<int> ANKProtectedData(-1);
 
 // Whether LocalAuthentication answered with the code.
 static BOOL ANKIsLAError(NSError *error, LAError code) {
@@ -159,6 +168,44 @@ NSString *ANKUnavailableReason(ANKAccessControl accessControl,
 
 + (NSInteger)majorOSVersion {
     return NSProcessInfo.processInfo.operatingSystemVersion.majorVersion;
+}
+
++ (void)followProtectedData {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+      [center addObserverForName:UIApplicationProtectedDataWillBecomeUnavailable
+                          object:nil
+                           queue:nil
+                      usingBlock:^(NSNotification *notification) {
+                        ANKProtectedData = 0;
+                      }];
+      [center addObserverForName:UIApplicationProtectedDataDidBecomeAvailable
+                          object:nil
+                           queue:nil
+                      usingBlock:^(NSNotification *notification) {
+                        ANKProtectedData = 1;
+                      }];
+      // The state now; RCTSharedApplication is nil in an app extension, where the notifications still come.
+      void (^read)(void) = ^{
+        UIApplication *application = RCTSharedApplication();
+        if (application != nil) ANKProtectedData = application.isProtectedDataAvailable ? 1 : 0;
+      };
+      if (NSThread.isMainThread) {
+          read();
+      } else {
+          dispatch_async(dispatch_get_main_queue(), read);
+      }
+    });
+}
+
++ (BOOL)isProtectedDataAvailable {
+    [self followProtectedData];
+    if (NSThread.isMainThread) {
+        UIApplication *application = RCTSharedApplication();
+        if (application != nil) return application.isProtectedDataAvailable;
+    }
+    return ANKProtectedData != 0;
 }
 
 + (NSDictionary *)testInfoDictionary {

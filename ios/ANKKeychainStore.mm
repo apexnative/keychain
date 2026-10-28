@@ -21,8 +21,7 @@ static BOOL ANKFailWithStatus(NSError **error, OSStatus status, NSString *action
     return ANKFail(error, [ANKError errorWithStatus:status action:action]);
 }
 
-// A context that fails a call needing a prompt with errSecInteractionNotAllowed instead of showing one.
-static LAContext *ANKSilentContext(void) {
+LAContext *ANKSilentContext(void) {
     LAContext *context = [[LAContext alloc] init];
     context.interactionNotAllowed = YES;
     return context;
@@ -32,6 +31,28 @@ static NSError *ANKAuthRequiredError(void) {
     return [ANKError errorWithCode:ANKErrorAuthRequired
                            message:@"@apexnative/keychain: the item has access control: reading it needs a prompt, "
                                    @"and this call can't show one."];
+}
+
+// What errSecInteractionNotAllowed means for a call that can't prompt: an item with access control while protected
+// data is available, else an item the locked device keeps out of reach (INTERACTION_NOT_ALLOWED).
+static NSError *ANKOutOfReachError(NSString *action) {
+    if (ANKDevice.isProtectedDataAvailable) return ANKAuthRequiredError();
+    return [ANKError errorWithStatus:errSecInteractionNotAllowed action:action];
+}
+
+// Whether an item of the attributes has access control by its metadata: what the simulator, which enforces none,
+// tells a protected item by.
+static BOOL ANKIsProtected(NSDictionary *attributes) {
+    ANKItemMetadata *metadata = [ANKItemMetadata metadataWithAttribute:attributes[(__bridge id)kSecAttrGeneric]];
+    return metadata != nil && metadata.accessControl != ANKAccessControlNone;
+}
+
+// Whether the query finds an item, without a prompt and without reading it: errSecSuccess, errSecItemNotFound, or
+// errSecInteractionNotAllowed for an item that needs authentication (or that the locked device keeps).
+static OSStatus ANKProbe(NSMutableDictionary *query) {
+    query[(__bridge id)kSecUseAuthenticationContext] = ANKSilentContext();
+    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
+    return SecItemCopyMatching((__bridge CFDictionaryRef)query, NULL);
 }
 
 @implementation ANKItem {
@@ -114,11 +135,29 @@ static NSError *ANKAuthRequiredError(void) {
     return query;
 }
 
-// Every item with the key, or of the store, synchronized or not, without a prompt.
+// Every item with the key, or of the store, synchronized or not. Never sent as it is: on a device, a query that
+// matches a protected item without a context shows the system's prompt, so a call adds a context, or skips them.
 - (NSMutableDictionary *)matchQueryForKey:(NSString *)key {
     NSMutableDictionary *query = [self queryForKey:key];
     query[(__bridge id)kSecAttrSynchronizable] = (__bridge id)kSecAttrSynchronizableAny;
+    return query;
+}
+
+// The same items with the silent context, for a delete: it needs no authentication, and can't prompt whatever the
+// Keychain decides.
+- (NSMutableDictionary *)silentMatchQueryForKey:(NSString *)key {
+    NSMutableDictionary *query = [self matchQueryForKey:key];
     query[(__bridge id)kSecUseAuthenticationContext] = ANKSilentContext();
+    return query;
+}
+
+// The attributes of every item of the query that needs no authentication: the Keychain skips the others silently
+// (kSecUseAuthenticationUISkip, which, unlike kSecUseAuthenticationUIFail, isn't deprecated). The simulator skips
+// none.
++ (NSMutableDictionary *)listingOf:(NSMutableDictionary *)query {
+    query[(__bridge id)kSecUseAuthenticationUI] = (__bridge id)kSecUseAuthenticationUISkip;
+    query[(__bridge id)kSecReturnAttributes] = @YES;
+    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitAll;
     return query;
 }
 
@@ -186,7 +225,8 @@ static NSError *ANKAuthRequiredError(void) {
     for (NSInteger attempt = 0; attempt < ANKWriteAttempts; attempt++) {
         // A synchronized item and another are two items for the Keychain: the write keeps one.
         BOOL foreign = NO;
-        NSArray<ANKItem *> *items = [self itemsForKey:key foreign:&foreign error:error];
+        BOOL hidden = NO;
+        NSArray<ANKItem *> *items = [self itemsForKey:key foreign:&foreign hidden:&hidden error:error];
         if (items == nil) return NO;
         // Another library's data isn't the package's to destroy: migrate frees the key.
         if (foreign) {
@@ -197,7 +237,7 @@ static NSError *ANKAuthRequiredError(void) {
         }
         ANKItem *same = nil;
         BOOL hasOther = NO;
-        BOOL isProtected = accessControl != ANKAccessControlNone;
+        BOOL isProtected = accessControl != ANKAccessControlNone || hidden;
         for (ANKItem *item in items) {
             isProtected = isProtected || item.accessControl != ANKAccessControlNone;
             if (item.synchronizable == synchronizable) {
@@ -260,7 +300,7 @@ static NSError *ANKAuthRequiredError(void) {
     if (status != errSecSuccess) return ANKFailWithStatus(error, status, @"couldn't write the item");
     NSDictionary *temporary = [self queryForKey:temporaryKey synchronizable:synchronizable];
 
-    status = SecItemDelete((__bridge CFDictionaryRef)[self matchQueryForKey:key]);
+    status = SecItemDelete((__bridge CFDictionaryRef)[self silentMatchQueryForKey:key]);
     if (status != errSecSuccess && status != errSecItemNotFound) {
         SecItemDelete((__bridge CFDictionaryRef)temporary);
         return ANKFailWithStatus(error, status, @"couldn't replace the item");
@@ -284,11 +324,10 @@ static NSError *ANKAuthRequiredError(void) {
 }
 
 // Deletes the temporary items a replace of the key left when its process ended between the steps: they hold a value
-// no call can reach. Best effort: a failure leaves them for the next replace.
+// no call can reach. Best effort: a failure leaves them for the next replace. The listing skips protected items, whose
+// keys can't be read without a prompt: a protected temporary item stays until clear(), which deletes without reading.
 - (void)deleteTemporariesOfKey:(NSString *)key {
-    NSMutableDictionary *query = [self matchQueryForKey:nil];
-    query[(__bridge id)kSecReturnAttributes] = @YES;
-    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitAll;
+    NSMutableDictionary *query = [ANKKeychainStore listingOf:[self matchQueryForKey:nil]];
     CFTypeRef result = NULL;
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
     NSArray<NSDictionary *> *found = CFBridgingRelease(result);
@@ -300,7 +339,7 @@ static NSError *ANKAuthRequiredError(void) {
         // prefix, and would take the key's own item.
         if ([account isKindOfClass:NSString.class] &&
             [account rangeOfString:prefix options:NSAnchoredSearch | NSLiteralSearch].location != NSNotFound) {
-            SecItemDelete((__bridge CFDictionaryRef)[self matchQueryForKey:account]);
+            SecItemDelete((__bridge CFDictionaryRef)[self silentMatchQueryForKey:account]);
         }
     }
 }
@@ -317,7 +356,7 @@ static NSError *ANKAuthRequiredError(void) {
 - (ANKItem *)itemForKey:(NSString *)key context:(LAContext *)context error:(NSError **)error {
     if (![ANKInstallation checkWithError:error]) return nil;
     NSMutableDictionary *query = [self matchQueryForKey:key];
-    if (context != nil) query[(__bridge id)kSecUseAuthenticationContext] = context;
+    query[(__bridge id)kSecUseAuthenticationContext] = context ?: ANKSilentContext();
     query[(__bridge id)kSecReturnAttributes] = @YES;
     query[(__bridge id)kSecReturnData] = @YES;
     query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
@@ -325,23 +364,19 @@ static NSError *ANKAuthRequiredError(void) {
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
     NSDictionary *attributes = CFBridgingRelease(result);
     if (status == errSecSuccess) {
-        ANKItem *item = [[ANKItem alloc] initWithAttributes:attributes];
         // The simulator's Keychain gives a protected value without authentication; the contract doesn't.
-        if (context == nil && item.accessControl != ANKAccessControlNone) {
+        if (context == nil && ANKIsProtected(attributes)) {
             ANKFail(error, ANKAuthRequiredError());
             return nil;
         }
-        return item;
+        return [[ANKItem alloc] initWithAttributes:attributes];
     }
     if (status == errSecItemNotFound) return [self notFound:error];
+    // The value needs a prompt, or the device is locked: no query of the attributes can tell, as on a device it needs
+    // the authentication too.
     if (status == errSecInteractionNotAllowed && context == nil) {
-        // The device is locked, or the value needs a prompt: the attributes, which never need one, tell which.
-        ANKItem *item = [self attributesForKey:key error:error];
-        if (item == nil) return nil;
-        if (item.metadata == nil || item.accessControl != ANKAccessControlNone) {
-            ANKFail(error, ANKAuthRequiredError());
-            return nil;
-        }
+        ANKFail(error, ANKOutOfReachError(@"couldn't read the item"));
+        return nil;
     }
     ANKFailWithStatus(error, status, @"couldn't read the item");
     return nil;
@@ -349,23 +384,31 @@ static NSError *ANKAuthRequiredError(void) {
 
 - (ANKItem *)attributesForKey:(NSString *)key error:(NSError **)error {
     if (![ANKInstallation checkWithError:error]) return nil;
-    NSMutableDictionary *query = [self matchQueryForKey:key];
-    query[(__bridge id)kSecReturnAttributes] = @YES;
+    NSMutableDictionary *query = [ANKKeychainStore listingOf:[self matchQueryForKey:key]];
     query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
     CFTypeRef result = NULL;
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
     NSDictionary *attributes = CFBridgingRelease(result);
-    if (status == errSecSuccess) return [[ANKItem alloc] initWithAttributes:attributes];
-    if (status == errSecItemNotFound) return [self notFound:error];
-    ANKFailWithStatus(error, status, @"couldn't read the item's attributes");
+    if (status == errSecSuccess) {
+        if (!ANKIsProtected(attributes)) return [[ANKItem alloc] initWithAttributes:attributes];
+        ANKFail(error, ANKAuthRequiredError());
+        return nil;
+    }
+    if (status != errSecItemNotFound) {
+        ANKFailWithStatus(error, status, @"couldn't read the item's attributes");
+        return nil;
+    }
+    // Skipped, or none: a protected item is there when a probe finds one.
+    NSNumber *has = [self hasItemForKey:key error:error];
+    if (has == nil) return nil;
+    if (!has.boolValue) return [self notFound:error];
+    ANKFail(error, ANKOutOfReachError(@"couldn't read the item's attributes"));
     return nil;
 }
 
 - (NSNumber *)hasItemForKey:(NSString *)key error:(NSError **)error {
     if (![ANKInstallation checkWithError:error]) return nil;
-    NSMutableDictionary *query = [self matchQueryForKey:key];
-    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, NULL);
+    OSStatus status = ANKProbe([self matchQueryForKey:key]);
     // errSecInteractionNotAllowed: there is an item, its protection keeps it out of reach now.
     if (status == errSecSuccess || status == errSecInteractionNotAllowed) return @YES;
     if (status == errSecItemNotFound) return @NO;
@@ -373,38 +416,61 @@ static NSError *ANKAuthRequiredError(void) {
     return nil;
 }
 
-// The package's items with the key, synchronized or not: their attributes, normally one or none. `foreign` says
-// whether another library has an item with the key too.
-- (NSArray<ANKItem *> *)itemsForKey:(NSString *)key foreign:(BOOL *)foreign error:(NSError **)error {
+// The package's items with the key the Keychain lists without a prompt, synchronized or not: their attributes,
+// normally one or none. `foreign` says whether another library has an item with the key, `hidden` whether the package
+// has one the listing skipped, an item with access control. No query reads a protected item: one with access control
+// is never synchronized, and silent probes tell whose it is.
+- (NSArray<ANKItem *> *)itemsForKey:(NSString *)key
+                            foreign:(BOOL *)foreign
+                             hidden:(BOOL *)hidden
+                              error:(NSError **)error {
     NSMutableDictionary *query = [self anyItemQueryForKey:key];
     query[(__bridge id)kSecAttrSynchronizable] = (__bridge id)kSecAttrSynchronizableAny;
-    query[(__bridge id)kSecUseAuthenticationContext] = ANKSilentContext();
-    query[(__bridge id)kSecReturnAttributes] = @YES;
-    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitAll;
     CFTypeRef result = NULL;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)[ANKKeychainStore listingOf:query], &result);
     NSArray<NSDictionary *> *found = CFBridgingRelease(result);
-    if (status == errSecItemNotFound) return @[];
-    if (status != errSecSuccess) {
+    if (status == errSecItemNotFound) found = @[];
+    if (status != errSecSuccess && status != errSecItemNotFound) {
         ANKFailWithStatus(error, status, @"couldn't write the item");
         return nil;
     }
     NSMutableArray<ANKItem *> *items = [NSMutableArray arrayWithCapacity:found.count];
+    BOOL listedLocal = NO;
     for (NSDictionary *attributes in found) {
+        id synchronizable = attributes[(__bridge id)kSecAttrSynchronizable];
+        listedLocal = listedLocal || ![synchronizable isKindOfClass:NSNumber.class] || ![synchronizable boolValue];
         if ([attributes[(__bridge id)kSecAttrCreator] isEqual:@(ANKItemCreator)]) {
             [items addObject:[[ANKItem alloc] initWithAttributes:attributes]];
         } else {
             *foreign = YES;
         }
     }
+    if (listedLocal) return items;
+
+    // An item that isn't synchronized the listing skipped: the package's, or another library's.
+    NSMutableDictionary *local = [self anyItemQueryForKey:key];
+    local[(__bridge id)kSecAttrSynchronizable] = @NO;
+    status = ANKProbe(local);
+    if (status == errSecItemNotFound) return items;
+    if (status != errSecSuccess && status != errSecInteractionNotAllowed) {
+        ANKFailWithStatus(error, status, @"couldn't write the item");
+        return nil;
+    }
+    status = ANKProbe([self queryForKey:key synchronizable:NO]);
+    if (status == errSecSuccess || status == errSecInteractionNotAllowed) {
+        *hidden = YES;
+    } else if (status == errSecItemNotFound) {
+        *foreign = YES;
+    } else {
+        ANKFailWithStatus(error, status, @"couldn't write the item");
+        return nil;
+    }
     return items;
 }
 
 - (NSArray<NSString *> *)allKeysWithError:(NSError **)error {
     if (![ANKInstallation checkWithError:error]) return nil;
-    NSMutableDictionary *query = [self matchQueryForKey:nil];
-    query[(__bridge id)kSecReturnAttributes] = @YES;
-    query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitAll;
+    NSMutableDictionary *query = [ANKKeychainStore listingOf:[self matchQueryForKey:nil]];
     CFTypeRef result = NULL;
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
     NSArray<NSDictionary *> *found = CFBridgingRelease(result);
@@ -413,12 +479,16 @@ static NSError *ANKAuthRequiredError(void) {
         ANKFailWithStatus(error, status, @"couldn't list the items");
         return nil;
     }
-    // A key once, when a synchronized item and another have it; the temporary key of a replace is no key.
+    // A key once, when a synchronized item and another have it; the temporary key of a replace is no key. A protected
+    // item, which the simulator lists, is left out as a device skips it.
     NSMutableOrderedSet<NSString *> *keys = [NSMutableOrderedSet orderedSetWithCapacity:found.count];
     NSString *nul = [NSString stringWithFormat:@"%C", (unichar)0];
     for (NSDictionary *attributes in found) {
         id key = attributes[(__bridge id)kSecAttrAccount];
-        if ([key isKindOfClass:NSString.class] && [key length] > 0 && ![key containsString:nul]) [keys addObject:key];
+        if ([key isKindOfClass:NSString.class] && [key length] > 0 && ![key containsString:nul] &&
+            !ANKIsProtected(attributes)) {
+            [keys addObject:key];
+        }
     }
     return keys.array;
 }
@@ -427,14 +497,14 @@ static NSError *ANKAuthRequiredError(void) {
 
 - (BOOL)removeItemForKey:(NSString *)key error:(NSError **)error {
     if (![ANKInstallation checkWithError:error]) return NO;
-    OSStatus status = SecItemDelete((__bridge CFDictionaryRef)[self matchQueryForKey:key]);
+    OSStatus status = SecItemDelete((__bridge CFDictionaryRef)[self silentMatchQueryForKey:key]);
     if (status == errSecSuccess || status == errSecItemNotFound) return YES;
     return ANKFailWithStatus(error, status, @"couldn't delete the item");
 }
 
 - (BOOL)clearWithError:(NSError **)error {
     if (![ANKInstallation checkWithError:error]) return NO;
-    OSStatus status = SecItemDelete((__bridge CFDictionaryRef)[self matchQueryForKey:nil]);
+    OSStatus status = SecItemDelete((__bridge CFDictionaryRef)[self silentMatchQueryForKey:nil]);
     if (status == errSecSuccess || status == errSecItemNotFound) return YES;
     return ANKFailWithStatus(error, status, @"couldn't clear the store");
 }
