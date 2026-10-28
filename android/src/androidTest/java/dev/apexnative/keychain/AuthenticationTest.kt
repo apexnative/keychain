@@ -1,5 +1,6 @@
 package dev.apexnative.keychain
 
+import android.os.Build
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -98,12 +99,13 @@ class AuthenticationTest : KeychainTestCase() {
         device.isSecure = false
         device.authenticationStatus = BiometricManager.BIOMETRIC_SUCCESS
         for (accessControl in AccessControl.entries - AccessControl.NONE) {
-            assertCode(KeychainErrorCode.PASSCODE_NOT_SET) { write(accessControl) }
+            assertCode(code(accessControl, UnavailableReason.PASSCODE_NOT_SET)) { write(accessControl) }
         }
         device.isSecure = true
         device.authenticationStatus = BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
         assertCode(KeychainErrorCode.BIOMETRY_NOT_ENROLLED) { write(AccessControl.BIOMETRY_ANY) }
-        assertCode(KeychainErrorCode.BIOMETRY_NOT_ENROLLED) { write(AccessControl.BIOMETRY_CURRENT_SET_OR_PASSCODE) }
+        val currentSetOrPasscode = AccessControl.BIOMETRY_CURRENT_SET_OR_PASSCODE
+        assertCode(code(currentSetOrPasscode, UnavailableReason.NOT_ENROLLED)) { write(currentSetOrPasscode) }
         device.authenticationStatus = BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
         assertCode(KeychainErrorCode.BIOMETRY_NOT_AVAILABLE) { write(AccessControl.BIOMETRY_CURRENT_SET) }
         device.authenticationStatus = BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED
@@ -138,16 +140,19 @@ class AuthenticationTest : KeychainTestCase() {
         device.isSecure = false
         device.authenticationStatus = BiometricManager.BIOMETRIC_SUCCESS
         for (accessControl in AccessControl.entries - AccessControl.NONE) {
-            assertEquals(UnavailableReason.PASSCODE_NOT_SET, capabilities.unavailable(accessControl))
+            val expected = onThisAndroid(accessControl, UnavailableReason.PASSCODE_NOT_SET)
+            assertEquals(expected, capabilities.unavailable(accessControl))
         }
 
         device.isSecure = true
         device.authenticationStatus = BiometricManager.BIOMETRIC_SUCCESS
-        for (accessControl in AccessControl.entries) assertNull(capabilities.unavailable(accessControl))
+        for (accessControl in AccessControl.entries) {
+            assertEquals(onThisAndroid(accessControl, null), capabilities.unavailable(accessControl))
+        }
 
         device.authenticationStatus = BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
         assertEquals(UnavailableReason.NOT_ENROLLED, capabilities.unavailable(AccessControl.BIOMETRY_CURRENT_SET))
-        assertNull(capabilities.unavailable(AccessControl.PASSCODE))
+        assertEquals(onThisAndroid(AccessControl.PASSCODE, null), capabilities.unavailable(AccessControl.PASSCODE))
 
         device.authenticationStatus = BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE
         assertEquals(UnavailableReason.NO_HARDWARE, capabilities.unavailable(AccessControl.BIOMETRY_ANY))
@@ -207,17 +212,11 @@ class AuthenticationTest : KeychainTestCase() {
     @Test
     fun theRealDeviceAgreesWithItsWrites() {
         // What `canUseAccessControl` says is what a write does: it writes, or fails with the reason's code.
-        val codes = mapOf(
-            UnavailableReason.UNSUPPORTED_OS to KeychainErrorCode.UNSUPPORTED,
-            UnavailableReason.NO_HARDWARE to KeychainErrorCode.BIOMETRY_NOT_AVAILABLE,
-            UnavailableReason.PASSCODE_NOT_SET to KeychainErrorCode.PASSCODE_NOT_SET,
-            UnavailableReason.NOT_ENROLLED to KeychainErrorCode.BIOMETRY_NOT_ENROLLED,
-        )
         val capabilities = keychain.capabilities
         for (accessControl in AccessControl.entries - AccessControl.NONE) {
             when (val reason = capabilities.unavailable(accessControl)) {
                 null -> write(accessControl)
-                else -> assertCode(codes.getValue(reason)) { write(accessControl) }
+                else -> assertCode(CODES.getValue(reason)) { write(accessControl) }
             }
         }
     }
@@ -250,6 +249,54 @@ class AuthenticationTest : KeychainTestCase() {
         assertEquals(next, capabilities.biometryState())
     }
 
+    /**
+     * `biometryCurrentSetOrPasscode` remembers the biometry it was written with: a new set — here a canary gone, a new
+     * fingerprint is PromptTest's — or none at all ends the item, KEY_INVALIDATED without a prompt, as the Keystore
+     * ends `biometryCurrentSet`'s. A sensor that can't say leaves the item be; the other access controls don't
+     * remember.
+     */
+    @Test
+    fun currentSetOrPasscodeRemembersTheBiometry() {
+        assumeTrue(NEEDS_LOCK_BIOMETRY_11, hasScreenLock && hasBiometry && device.sdk >= 30)
+        val currentSetOrPasscode = options(accessControl = AccessControl.BIOMETRY_CURRENT_SET_OR_PASSCODE)
+        keychain.setItem(service, "token", "v", Encoding.UTF8, currentSetOrPasscode)
+        val either = options(accessControl = AccessControl.BIOMETRY_ANY_OR_PASSCODE)
+        keychain.setItem(service, "either", "v", Encoding.UTF8, either)
+        val state = keychain.capabilities.biometryState()
+        assertNotNull(state)
+        assertEquals(state, storedItems(service).getValue("token").biometryState)
+        assertNull(storedItems(service).getValue("either").biometryState)
+        assertTrue(keychain.read(service, "token", Encoding.UTF8) is Keychain.Read.Authenticate)
+
+        device.authenticationStatus = BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE
+        assertTrue(keychain.read(service, "token", Encoding.UTF8) is Keychain.Read.Authenticate)
+        device.authenticationStatus = null
+
+        deleteKeystoreKey(KeyAliases.BIOMETRY_STATE + state)
+        assertCode(KeychainErrorCode.KEY_INVALIDATED) { keychain.read(service, "token", Encoding.UTF8) }
+        assertFalse(keychain.hasItem(service, "token"))
+        assertTrue(keychain.read(service, "either", Encoding.UTF8) is Keychain.Read.Authenticate)
+
+        // A new item belongs to the new set; when no biometry is left, it goes too.
+        keychain.setItem(service, "token", "w", Encoding.UTF8, currentSetOrPasscode)
+        assertNotEquals(state, storedItems(service).getValue("token").biometryState)
+        device.authenticationStatus = BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
+        assertCode(KeychainErrorCode.KEY_INVALIDATED) { keychain.read(service, "token", Encoding.UTF8) }
+        assertFalse(keychain.hasItem(service, "token"))
+    }
+
+    /** The file can't make the item forget its biometry: DATA_CORRUPTED, and the item stays. */
+    @Test
+    fun currentSetOrPasscodeWithoutItsBiometryIsDataCorrupted() {
+        assumeTrue(NEEDS_LOCK_BIOMETRY_11, hasScreenLock && hasBiometry && device.sdk >= 30)
+        val currentSetOrPasscode = options(accessControl = AccessControl.BIOMETRY_CURRENT_SET_OR_PASSCODE)
+        keychain.setItem(service, "token", "v", Encoding.UTF8, currentSetOrPasscode)
+        val item = storedItems(service).getValue("token")
+        writeStore(service, mapOf("token" to item.copy(biometryState = null)))
+        assertCode(KeychainErrorCode.DATA_CORRUPTED) { newKeychain().read(service, "token", Encoding.UTF8) }
+        assertTrue(newKeychain().hasItem(service, "token"))
+    }
+
     /** The real device's level: StrongBox where there is one, else where the Keystore attests a new key lives. */
     @Test
     fun hardwareSecurityLevel() {
@@ -270,7 +317,25 @@ class AuthenticationTest : KeychainTestCase() {
             options(accessControl = accessControl, authValidity = authValidity),
         )
 
+    // Before Android 11 the passcode variants are unsupported, whatever else the device lacks.
+    private fun onThisAndroid(accessControl: AccessControl, reason: UnavailableReason?) =
+        if (accessControl.allowsPasscode && device.sdk < Build.VERSION_CODES.R) {
+            UnavailableReason.UNSUPPORTED_OS
+        } else {
+            reason
+        }
+
+    private fun code(accessControl: AccessControl, reason: UnavailableReason) =
+        CODES.getValue(onThisAndroid(accessControl, reason)!!)
+
     private companion object {
+        // The error of a write for each reason `canUseAccessControl` gives.
+        val CODES = mapOf(
+            UnavailableReason.UNSUPPORTED_OS to KeychainErrorCode.UNSUPPORTED,
+            UnavailableReason.NO_HARDWARE to KeychainErrorCode.BIOMETRY_NOT_AVAILABLE,
+            UnavailableReason.PASSCODE_NOT_SET to KeychainErrorCode.PASSCODE_NOT_SET,
+            UnavailableReason.NOT_ENROLLED to KeychainErrorCode.BIOMETRY_NOT_ENROLLED,
+        )
         const val NEEDS_LOCK_11 = "Needs a screen lock and Android 11"
         const val NEEDS_LOCK_BIOMETRY_11 = "Needs a screen lock, a fingerprint enrolled and Android 11"
     }

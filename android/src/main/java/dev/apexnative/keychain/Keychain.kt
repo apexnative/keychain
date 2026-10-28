@@ -84,6 +84,13 @@ internal class Keychain(
             )
         }
         checkUnlocked(options.accessible)
+        // `biometryCurrentSetOrPasscode` remembers the biometry it's written with, for `checkBiometry`.
+        val biometryState = if (options.accessControl == AccessControl.BIOMETRY_CURRENT_SET_OR_PASSCODE) {
+            val enrolled = capabilities.biometryState()
+            enrolled ?: throw unavailableError(options.accessControl, UnavailableReason.NOT_ENROLLED)
+        } else {
+            null
+        }
         val store = store(service)
         store.update { data ->
             val sealed = seal(store, key, plaintext, options)
@@ -105,6 +112,7 @@ internal class Keychain(
                     createdAt = data.items[key]?.createdAt ?: now,
                     modifiedAt = now,
                     authValidity = options.authValidity,
+                    biometryState = biometryState,
                 ),
             )
         }
@@ -240,7 +248,10 @@ internal class Keychain(
         return try {
             when (item.scheme) {
                 Scheme.AES_GCM -> Read.Value(decrypt(store.service, key, item, sealed, encoding))
-                Scheme.RSA_OAEP_AES_GCM -> authenticate(store, key, item, sealed, encoding)
+                Scheme.RSA_OAEP_AES_GCM -> {
+                    checkBiometry(item)
+                    authenticate(store, key, item, sealed, encoding)
+                }
             }
         } catch (e: KeyGone) {
             // The item can never be read again, so it goes, unless a write or a clear changed it
@@ -249,6 +260,16 @@ internal class Keychain(
             if (!removed && retry) return readItem(store, key, encoding, interactive, retry = false)
             throw keyInvalidated(e.cause)
         }
+    }
+
+    /**
+     * The Keystore doesn't invalidate a key that takes both the biometry and the passcode on a new enrollment, so the
+     * library does for `biometryCurrentSetOrPasscode`, as iOS does: the item remembers the enrolled biometry, and once
+     * it changes or is gone the item's key is as good as gone. A sensor that can't say now leaves the item be.
+     */
+    private fun checkBiometry(item: StoredItem) {
+        val state = item.biometryState ?: return
+        if (capabilities.biometryChanged(state) == true) throw KeyGone(null)
     }
 
     private fun decrypt(service: String, key: String, item: StoredItem, sealed: SealedItem, encoding: Encoding): Item {
@@ -523,9 +544,12 @@ internal class Keychain(
                 val iv = Base64.decode(item.iv)
                 val ciphertext = Base64.decode(item.ciphertext)
                 val wrappedKey = item.wrappedKey?.let(Base64::decode) ?: ByteArray(0)
-                // The scheme matches the access control: the file can't make an item weaker than it was written.
+                // The scheme matches the access control, and `biometryCurrentSetOrPasscode` has its biometry: the
+                // file can't make an item weaker than it was written.
                 val schemeFits = (item.scheme == Scheme.AES_GCM) == (item.accessControl == AccessControl.NONE)
-                if (!schemeFits || iv?.size != AesGcm.IV_BYTES || ciphertext == null ||
+                val biometryFits =
+                    item.accessControl != AccessControl.BIOMETRY_CURRENT_SET_OR_PASSCODE || item.biometryState != null
+                if (!schemeFits || !biometryFits || iv?.size != AesGcm.IV_BYTES || ciphertext == null ||
                     ciphertext.size < AesGcm.TAG_BYTES
                 ) {
                     throw KeychainException(KeychainErrorCode.DATA_CORRUPTED, "The item can't be decrypted: damaged.")

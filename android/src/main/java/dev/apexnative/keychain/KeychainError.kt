@@ -141,9 +141,16 @@ internal fun promptError(errorCode: Int): KeychainException {
 
 private const val PROMPT_DOMAIN = "androidx.biometric.BiometricPrompt"
 
-/** Whether the Keystore refused a key as LOCKED: its numeric code, public since Android 13. */
-private fun isKeystoreLocked(cause: Throwable) = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+/**
+ * Whether the Keystore refused a key as locked: keystore2's LOCKED, a numeric code public since Android 13; before, a
+ * hidden class that says so only in its message.
+ */
+private fun isKeystoreLocked(cause: Throwable) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
     (cause as? android.security.KeyStoreException)?.numericErrorCode == KEYSTORE_LOCKED
+} else {
+    cause.javaClass.name == "android.security.KeyStoreException" &&
+        cause.message?.equals("Device locked", ignoreCase = true) == true
+}
 
 // keystore2's `ResponseCode::LOCKED`: the user's keys that need an unlocked device, while it's locked.
 private const val KEYSTORE_LOCKED = 2

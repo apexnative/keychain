@@ -87,7 +87,7 @@ scripts/typecheck.sh                  # TypeScript: the library, the plugin and 
 scripts/lint.sh [files...]            # ESLint + Prettier
 scripts/test-js.sh [jest args...]     # Jest: the API, the mock, /compat, /migrate, the plugin, the scenarios
 scripts/test-ios.sh [UDID | --ios V]  # the pod's XCTest on a simulator made for the run, Face ID prompts included
-scripts/test-android.sh [SERIAL] [gradle args...]  # the JVM tests; with an emulator's serial, the tests on it too
+scripts/test-android.sh [--emulator [API] | SERIAL]  # the JVM tests; with --emulator or a serial, the device tests too
 scripts/build-ios.sh [UDID]           # the example for the simulator; with a UDID: install and start it there
 scripts/build-android.sh [--lib | SERIAL]  # the example (arm64); --lib: the library only; SERIAL: install, start
 scripts/pods.sh                       # pod install, after a change of ios/ or of the codegen spec
@@ -101,9 +101,11 @@ yarn example start                    # Metro for the example
   deletes it after, so none is left behind; with a UDID it runs on that simulator and keeps it. The tests enroll Face ID
   and show it faces themselves, the script grants the test host Face ID and takes the app to the background when a
   test asks; a test the simulator can't run fails rather than skips.
-- `scripts/test-android.sh SERIAL` runs the instrumented tests on that emulator only — never the user's phone: they
-  enroll and delete fingers, lock the screen and answer the prompt themselves. The emulator (`ApexKeychain_API_36`)
-  has the PIN 1234 and fingers 1 and 2 enrolled (`PIN=…`, `FINGERS=…` for another), and the tests reach its console
-  with `~/.emulator_console_auth_token`. A locked emulator is unlocked with the PIN first.
+- `scripts/test-android.sh --emulator [API]` makes an emulator for the run — the newest installed system image with a
+  fingerprint sensor, or the API given, such as `--emulator 30` — sets PIN 1234 and fingers 1 and 2 (`EmulatorSetup`),
+  runs the instrumented tests and deletes it whatever the result. With a SERIAL they run on that emulator as it is,
+  which needs the same PIN and fingers (`PIN=…`, `FINGERS=…` for others) — never the user's phone: the tests enroll
+  and delete fingers, lock the screen and answer the prompt themselves. They reach the emulator's console with
+  `~/.emulator_console_auth_token`; a locked emulator is unlocked with the PIN first.
 - A change of `src/native/NativeApexKeychain.ts` changes the generated `NativeApexKeychainSpec` on both platforms: run
   `scripts/pods.sh` and both native builds.

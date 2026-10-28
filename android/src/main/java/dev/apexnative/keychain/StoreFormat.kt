@@ -34,6 +34,8 @@ internal data class StoredItem(
     val modifiedAt: Long,
     /** Seconds one authentication unlocks the item's key for; 0 — every read. The file has it only when it isn't 0. */
     val authValidity: Int = 0,
+    /** `biometryCurrentSetOrPasscode`: the enrolled biometry when the item was written, a `getBiometryState` token. */
+    val biometryState: String? = null,
 )
 
 /** The items of one service: a store's file, and its cache in memory. Never changed: a write makes a new one. */
@@ -96,6 +98,7 @@ internal object StoreFormat {
         .put("c", item.createdAt)
         .put("m", item.modifiedAt)
         .apply { if (item.authValidity != 0) put("av", item.authValidity) }
+        .apply { item.biometryState?.let { put("bs", it) } }
 
     private fun decodeItem(json: JSONObject): StoredItem {
         val scheme = json.enum<Scheme>("scheme")
@@ -117,6 +120,7 @@ internal object StoreFormat {
             createdAt = json.long("c"),
             modifiedAt = json.long("m"),
             authValidity = json.optionalSeconds("av"),
+            biometryState = json.optionalString("bs"),
         )
     }
 

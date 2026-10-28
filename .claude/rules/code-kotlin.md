@@ -65,17 +65,23 @@ Each of these was a bug once, or cost a test session a day.
   not with `UserNotAuthenticatedException`. The library checks the lock itself before any key is touched
   (`checkUnlocked` in `Keychain.kt`, on every API), and maps `LOCKED` to `INTERACTION_NOT_ALLOWED`
   (`KeychainError.kt`). `KeyStoreException` and its numeric code are public from Android 13; before, it is a hidden
-  class that says "user not authenticated" only in its message.
+  class that says so only in its message (Android 11: "Device locked").
 - **A Keystore operation outlives its key.** A read waiting for its prompt still decrypts the old value after
   `removeItem`, `clear` or a write. After the prompt the read checks the item is still the store's, and starts over
   when it isn't (`afterPrompt`, `PromptAgainException`).
 - **Lockout on Android 15+.** The system asks for the PIN inside the prompt, and that PIN is bound to the prompt's
   operation: the finger after it doesn't unlock it, so the queue shows the prompt once more. `LOCKOUT` reaches the app
   only on Android 14 and lower; `BiometricManager` reports a locked-out sensor as available.
-- **Home during a prompt.** Android 16 reports it as `ERROR_USER_CANCELED`, and the error can come about 30 ms before
-  the activity's pause: the queue waits before the next prompt (`LEAVING_MILLIS`), or it shows over the launcher.
+- **Home during a prompt.** Android 11+ reports it as `ERROR_USER_CANCELED`, Android 9 and 10 as `ERROR_CANCELED`, and
+  the error can come about 30 ms before the activity's pause: the queue waits before the next prompt
+  (`LEAVING_MILLIS`), or it shows over the launcher. Before Android 9 the prompt is androidx.biometric's own dialog in
+  the activity: a cancel would leave a dead dialog, so it stays for the user to answer when the app comes back.
 - **`setInvalidatedByBiometricEnrollment`** is ignored for a key that takes both the biometry and the device
-  credential: a new finger doesn't invalidate a `biometryCurrentSetOrPasscode` item.
+  credential. The library ends `biometryCurrentSetOrPasscode` items itself, as iOS does: the item stores the
+  `getBiometryState` token it was written with, and a read after a change deletes it with `KEY_INVALIDATED`
+  (`checkBiometry` in `Keychain.kt`).
+- **Emulators before Android 10 never change the fingerprint ID**, so a new finger invalidates nothing there. Leaving
+  Settings' fingerprint list cancels the enrollment's challenge: enroll every finger in one visit.
 - **Instrumented tests run on every connected device** when Gradle starts them, a phone included: only through
   `scripts/test-android.sh SERIAL`, with the emulator's serial.
 - **The emulator under instrumentation.** A cold-booted emulator is locked and can't run the tests ("not encryption

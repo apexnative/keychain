@@ -79,6 +79,16 @@ internal class Capabilities(private val device: Device, private val keys: Keysto
         return generation
     }
 
+    /**
+     * Whether the enrolled biometrics are no longer those of [state], a token of [biometryState]: true when they
+     * changed or are all gone, false when they're the same, null when the sensor can't say now.
+     */
+    fun biometryChanged(state: String): Boolean? = when (device.canAuthenticate(Authenticators.BIOMETRIC_STRONG)) {
+        BiometricManager.BIOMETRIC_SUCCESS -> biometryState() != state
+        BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> true
+        else -> null
+    }
+
     /** The best hardware a new key can live in: StrongBox, or where a key made to see lives. Measured once. */
     fun hardwareSecurityLevel(): SecurityLevel {
         hardwareLevel?.let { return it }
