@@ -1,6 +1,6 @@
 {
   "name": "@apexnative/keychain",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.2",
   "description": "Secure storage for React Native: the iOS Keychain and the Android Keystore behind one API",
   "keywords": [
     "react-native",

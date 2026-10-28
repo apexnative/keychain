@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-rc.2](https://github.com/apexnative/keychain/compare/v1.0.0-rc.1...v1.0.0-rc.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* **android:** end biometryCurrentSetOrPasscode items on a new fingerprint, as on iOS ([#7](https://github.com/apexnative/keychain/issues/7)) ([2895494](https://github.com/apexnative/keychain/commit/2895494c0dedd120be467a556f1a02b54f3a6654))
+
 ## [1.0.0-rc.1](https://github.com/apexnative/keychain/compare/v1.0.0-rc.0...v1.0.0-rc.1) (2026-10-27)
 
 
