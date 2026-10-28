@@ -2,7 +2,7 @@
 
 Secure storage for React Native: the iOS Keychain and the Android Keystore behind one API, with biometric and passcode
 protection that means the same on both platforms. A TurboModule; React Native 0.80+ with the New Architecture only,
-developed on 0.87; iOS 15.1+, Android minSdk 24.
+developed on 0.88; iOS 15.1+, Android minSdk 24.
 
 More rules are in `.claude/rules/`: `general.md` always applies, the others load with the files they cover.
 
