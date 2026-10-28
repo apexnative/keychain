@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.0.0](https://github.com/apexnative/keychain/compare/v1.0.0-rc.2...v1.0.0) (2026-10-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* Keychain.getItemInfo, Keychain.getAllKeys, the ItemInfo type, the label option of setItem and setBytes, the fallback field of prompt and the error code USER_FALLBACK are gone. Keep a user name to show before the prompt as an item without access control.
+
+### Features
+
+* leave getItemInfo, getAllKeys, labels and the fallback button for 1.1 ([#10](https://github.com/apexnative/keychain/issues/10)) ([01f7d33](https://github.com/apexnative/keychain/commit/01f7d3388a9e5facc7b7ddffca6c06909bebcb90))
+
+
+### Bug Fixes
+
+* **ios:** read a protected item with one prompt, as a native app does ([#9](https://github.com/apexnative/keychain/issues/9)) ([a35378f](https://github.com/apexnative/keychain/commit/a35378f8985a5c3913905a030c31c421fa355343))
+
+
+### Miscellaneous Chores
+
+* release 1.0.0 as the first stable version ([#13](https://github.com/apexnative/keychain/issues/13)) ([d95fbb0](https://github.com/apexnative/keychain/commit/d95fbb0d2b70ed51ad71bd66cc63c12f23bb4967))
+
 ## [1.0.0-rc.2](https://github.com/apexnative/keychain/compare/v1.0.0-rc.1...v1.0.0-rc.2) (2026-10-28)
 
 
