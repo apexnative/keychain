@@ -10,7 +10,7 @@ Every failure is a `KeychainError` with one of the codes below; `nativeCode` and
 
 ### USER_CANCELED {#user-canceled}
 
-The user closed the prompt: Cancel, or the `cancel` button of `prompt`. On Android 16, also a prompt that was open when the user went to the home screen: Android reports it as the user's cancel, and the package can't tell the two apart.
+The user closed the prompt: Cancel, or the `cancel` button of `prompt`. On Android 16 and newer, also a prompt that was open when the user went to the home screen, and too many failed attempts when the system takes the user to its own PIN screen and the user leaves it: Android reports both as the user's cancel, and the package can't tell them apart.
 
 - iOS: `LAError.userCancel`, `errSecUserCanceled`. Android: `ERROR_USER_CANCELED`, `ERROR_NEGATIVE_BUTTON`.
 - **Do:** offer the other way in (a password form); don't ask again at once.
