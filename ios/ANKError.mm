@@ -4,7 +4,6 @@
 #import <Security/Security.h>
 
 ANKErrorCode const ANKErrorUserCanceled = @"USER_CANCELED";
-ANKErrorCode const ANKErrorUserFallback = @"USER_FALLBACK";
 ANKErrorCode const ANKErrorSystemCanceled = @"SYSTEM_CANCELED";
 ANKErrorCode const ANKErrorAuthFailed = @"AUTH_FAILED";
 ANKErrorCode const ANKErrorLockout = @"LOCKOUT";
@@ -79,10 +78,10 @@ static NSString *ANKReasonOfStatus(OSStatus status) {
 // The error code for an LAError of a prompt or a check.
 static ANKErrorCode ANKCodeOfLAError(NSInteger code) {
     switch (code) {
+        // The fallback button is hidden; were it shown, the user chose not to authenticate.
         case LAErrorUserCancel:
-            return ANKErrorUserCanceled;
         case LAErrorUserFallback:
-            return ANKErrorUserFallback;
+            return ANKErrorUserCanceled;
         case LAErrorSystemCancel:
         case LAErrorAppCancel:
             return ANKErrorSystemCanceled;

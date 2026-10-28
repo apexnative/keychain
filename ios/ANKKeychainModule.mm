@@ -6,6 +6,8 @@
 #import "ANKMigration.h"
 #import "ANKOptions.h"
 
+#import <TargetConditionals.h>
+
 #pragma mark - Arguments
 
 // What JavaScript checked already (src/options.ts), native checks again where a wrong value would be stored or guessed
@@ -89,7 +91,7 @@ static ANKWriteOptions *ANKWriteOptionsOf(JS::NativeApexKeychain::WriteOptions &
 }
 
 static ANKPrompt *ANKPromptOf(JS::NativeApexKeychain::Prompt &prompt) {
-    return [[ANKPrompt alloc] initWithTitle:prompt.title() cancel:prompt.cancel() fallback:prompt.fallback()];
+    return [[ANKPrompt alloc] initWithTitle:prompt.title() cancel:prompt.cancel()];
 }
 
 static BOOL ANKAccessControlOf(NSString *name, ANKAccessControl *accessControl, NSError **error) {
@@ -155,6 +157,12 @@ static void ANKAnswerSource(NSData *data,
 // Whether a `biometryCurrentSet*` item's biometry changed since the write. Compared only under the major version of
 // iOS that took the state: Apple's hash may change with a major update, and the item's own access control still binds
 // it to the biometry. A state that can't be read now (a lockout) is no change.
+static NSError *ANKKeyInvalidatedError(void) {
+    return [ANKError errorWithCode:ANKErrorKeyInvalidated
+                           message:@"@apexnative/keychain: the enrolled biometry changed since the item was written, "
+                                   @"so the item was deleted. Sign the user in again."];
+}
+
 static BOOL ANKIsInvalidated(ANKItem *item) {
     ANKItemMetadata *metadata = item.metadata;
     if (!ANKAccessControlIsCurrentSet(item.accessControl) || metadata.osVersion == 0 ||
@@ -164,6 +172,13 @@ static BOOL ANKIsInvalidated(ANKItem *item) {
     BOOL known = NO;
     NSData *state = [ANKDevice biometryStateKnown:&known];
     return known && !(state == metadata.domainState || [state isEqualToData:metadata.domainState]);
+}
+
+// KEY_INVALIDATED, once the item is deleted, when it's bound to biometry that changed since its write; else nil.
+static NSError *ANKInvalidation(ANKItem *item, ANKKeychainStore *keychain) {
+    if (!ANKIsInvalidated(item)) return nil;
+    [keychain removeItemForKey:item.key error:NULL];
+    return ANKKeyInvalidatedError();
 }
 
 static double ANKMilliseconds(NSDate *date) {
@@ -177,7 +192,7 @@ static NSDictionary *ANKItemOf(ANKItem *item, ANKEncoding encoding, NSError **er
     return item.label != nil ? @{@"value" : value, @"label" : item.label} : @{@"value" : value};
 }
 
-// `ItemInfo`.
+// `ItemInfo`, which 1.0.0 doesn't use: `getItemInfo` stays in the native contract for 1.1.0.
 static NSDictionary *ANKItemInfoOf(ANKItem *item) {
     NSMutableDictionary *info = [@{
         @"key" : item.key,
@@ -215,6 +230,8 @@ static void *const ANKQueueKey = (void *)&ANKQueueKey;
           "dev.apexnative.keychain",
           dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
       dispatch_queue_set_specific(queue, ANKQueueKey, ANKQueueKey, NULL);
+      // Whether the device is locked tells a protected item from one the lock keeps: UIKit says it on the main thread.
+      [ANKDevice followProtectedData];
     });
     return queue;
 }
@@ -282,28 +299,20 @@ static BOOL ANKSetItem(ANKKeychainStore *keychain,
         [ANKError reject:reject error:error];
         return;
     }
+    // Without a prompt first: an item without access control is read at once, and a protected one answers
+    // AUTH_REQUIRED without the Keychain showing anything.
     ANKItem *item = [keychain itemForKey:key context:nil error:&error];
     if (item == nil && error == nil) {
         resolve(nil);
         return;
     }
     if ([[ANKError codeOfError:error] isEqualToString:ANKErrorAuthRequired]) {
-        ANKItem *attributes = [keychain attributesForKey:key error:&error];
-        if (attributes == nil) {
-            if (error != nil) {
-                [ANKError reject:reject error:error];
-            } else {
-                resolve(nil);
-            }
-            return;
-        }
-        [self readProtectedItem:attributes
-                       keychain:keychain
-                       encoding:valueEncoding
-                         prompt:ANKPromptOf(prompt)
-                          retry:YES
-                        resolve:resolve
-                         reject:reject];
+        [self readProtectedKey:key
+                      keychain:keychain
+                      encoding:valueEncoding
+                        prompt:ANKPromptOf(prompt)
+                       resolve:resolve
+                        reject:reject];
         return;
     }
     NSDictionary *result = item != nil ? ANKItemOf(item, valueEncoding, &error) : nil;
@@ -314,63 +323,51 @@ static BOOL ANKSetItem(ANKKeychainStore *keychain,
     resolve(result);
 }
 
-// A read of an item with access control. An item bound to biometry that changed is deleted
-// (KEY_INVALIDATED); else a prompt, which waits for the user off the queue, then the read with its context, on the
-// queue. A cached context that no longer opens the item gives way to a prompt, once.
-- (void)readProtectedItem:(ANKItem *)item
-                 keychain:(ANKKeychainStore *)keychain
-                 encoding:(ANKEncoding)encoding
-                   prompt:(ANKPrompt *)prompt
-                    retry:(BOOL)retry
-                  resolve:(RCTPromiseResolveBlock)resolve
-                   reject:(RCTPromiseRejectBlock)reject {
-    if (ANKIsInvalidated(item)) {
-        [keychain removeItemForKey:item.key error:NULL];
-        [ANKError reject:reject
-                    code:ANKErrorKeyInvalidated
-                 message:@"@apexnative/keychain: the enrolled biometry changed since the item was written, so the "
-                         @"item was deleted. Sign the user in again."];
+// A read of an item with access control: one prompt, the Keychain's, during the read itself, which waits for the user
+// off the queue (ANKAuthenticator); then back on the queue. An item bound to biometry that changed is deleted
+// (KEY_INVALIDATED): the metadata that tells it comes with the value, or the Keychain refuses the item.
+- (void)readProtectedKey:(NSString *)key
+                keychain:(ANKKeychainStore *)keychain
+                encoding:(ANKEncoding)encoding
+                  prompt:(ANKPrompt *)prompt
+                 resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject {
+#if TARGET_OS_SIMULATOR
+    // The simulator's Keychain gives the item without authentication, so the checks come before the prompt there; a
+    // device makes them once its prompt gave the item, or answers them from the Keychain's refusal.
+    NSError *peekError = nil;
+    ANKItem *peek = [keychain itemForKey:key context:ANKSilentContext() error:&peekError];
+    NSError *failure = peek == nil ? peekError
+                                   : ANKInvalidation(peek, keychain)
+                                         ?: [ANKDevice usageDescriptionErrorForAccessControl:peek.accessControl];
+    if (failure != nil || peek == nil) {
+        failure != nil ? [ANKError reject:reject error:failure] : resolve(nil);
         return;
     }
-    NSError *usage = [ANKDevice usageDescriptionErrorForAccessControl:item.accessControl];
-    if (usage != nil) {
-        [ANKError reject:reject error:usage];
-        return;
-    }
+#endif
     dispatch_queue_t queue = self.methodQueue;
-    [ANKAuthenticator.shared
-        authenticateItem:item
-                 service:keychain.service
-                  prompt:prompt
-              completion:^(LAContext *context, BOOL cached, NSError *authenticationError) {
-                if (context == nil) {
-                    [ANKError reject:reject error:authenticationError];
-                    return;
-                }
-                dispatch_async(queue, ^{
-                  NSError *error = nil;
-                  ANKItem *read = [keychain itemForKey:item.key context:context error:&error];
-                  if (read == nil && error != nil && cached && retry) {
-                      [ANKAuthenticator.shared forgetContext:context];
-                      [self readProtectedItem:item
-                                     keychain:keychain
-                                     encoding:encoding
-                                       prompt:prompt
-                                        retry:NO
-                                      resolve:resolve
-                                       reject:reject];
-                      return;
-                  }
-                  NSDictionary *result = read != nil ? ANKItemOf(read, encoding, &error) : nil;
-                  if (result != nil) {
-                      resolve(result);
-                  } else if (error != nil) {
-                      [ANKError reject:reject error:error];
-                  } else {
-                      resolve(nil);
-                  }
-                });
-              }];
+    [ANKAuthenticator.shared readItemForKey:key
+                                   keychain:keychain
+                                     prompt:prompt
+                                 completion:^(ANKItem *item, NSError *readError) {
+                                   dispatch_async(queue, ^{
+                                     NSError *error = item != nil ? ANKInvalidation(item, keychain) : readError;
+                                     // The Keychain refused a bound item: it can't be opened any more.
+                                     if (item == nil &&
+                                         [[ANKError codeOfError:error] isEqualToString:ANKErrorKeyInvalidated]) {
+                                         [keychain removeItemForKey:key error:NULL];
+                                     }
+                                     NSDictionary *result =
+                                         item != nil && error == nil ? ANKItemOf(item, encoding, &error) : nil;
+                                     if (result != nil) {
+                                         resolve(result);
+                                     } else if (error != nil) {
+                                         [ANKError reject:reject error:error];
+                                     } else {
+                                         resolve(nil);
+                                     }
+                                   });
+                                 }];
 }
 
 - (void)removeItem:(JS::NativeApexKeychain::Store &)store
@@ -404,6 +401,7 @@ static BOOL ANKSetItem(ANKKeychainStore *keychain,
                 key:(NSString *)key
             resolve:(RCTPromiseResolveBlock)resolve
              reject:(RCTPromiseRejectBlock)reject {
+    // Never a prompt: a protected item answers AUTH_REQUIRED, as its attributes need the user's authentication.
     NSError *error = nil;
     ANKKeychainStore *keychain = ANKStoreOf(store, &error);
     ANKItem *item = keychain != nil && ANKCheckKey(key, &error) ? [keychain attributesForKey:key error:&error] : nil;
@@ -417,6 +415,7 @@ static BOOL ANKSetItem(ANKKeychainStore *keychain,
 - (void)getAllKeys:(JS::NativeApexKeychain::Store &)store
            resolve:(RCTPromiseResolveBlock)resolve
             reject:(RCTPromiseRejectBlock)reject {
+    // The keys of the items without access control: a protected item can't be listed without a prompt.
     NSError *error = nil;
     ANKKeychainStore *keychain = ANKStoreOf(store, &error);
     NSArray<NSString *> *keys = keychain != nil ? [keychain allKeysWithError:&error] : nil;
@@ -583,34 +582,24 @@ static BOOL ANKSetItem(ANKKeychainStore *keychain,
     ANKAnswerSource(data, error, resolve, reject);
 }
 
-// A read of a source that needs a prompt: the prompt for the item's own access control, which waits for the user off
-// the queue, then the read with its context, on the queue.
+// A read of a source that needs a prompt: the Keychain's, for the item's own access control, during the read, which
+// waits for the user off the queue (ANKAuthenticator); then back on the queue.
 - (void)readSource:(ANKMigrationSource *)source
             prompt:(ANKPrompt *)prompt
            resolve:(RCTPromiseResolveBlock)resolve
             reject:(RCTPromiseRejectBlock)reject {
-    NSError *error = nil;
-    SecAccessControlRef accessControl = [ANKMigration copyAccessControlOfSource:source error:&error];
-    if (accessControl == NULL) {
-        ANKAnswerSource(nil, error, resolve, reject);
-        return;
-    }
     dispatch_queue_t queue = self.methodQueue;
-    [ANKAuthenticator.shared
-        authenticateAccessControl:accessControl
-                           prompt:prompt
-                       completion:^(LAContext *context, BOOL cached, NSError *authenticationError) {
-                         if (context == nil) {
-                             [ANKError reject:reject error:authenticationError];
-                             return;
-                         }
-                         dispatch_async(queue, ^{
-                           NSError *error = nil;
-                           NSData *data = [ANKMigration dataOfSource:source context:context error:&error];
-                           ANKAnswerSource(data, error, resolve, reject);
-                         });
-                       }];
-    CFRelease(accessControl);
+    // The simulator can't tell another library's flags: biometry or the passcode shows a prompt for any.
+    [ANKAuthenticator.shared readWithPrompt:prompt
+                                     policy:LAPolicyDeviceOwnerAuthentication
+                                       read:^id(LAContext *context, NSError **error) {
+                                         return [ANKMigration dataOfSource:source context:context error:error];
+                                       }
+                                 completion:^(id data, NSError *error) {
+                                   dispatch_async(queue, ^{
+                                     ANKAnswerSource(data, error, resolve, reject);
+                                   });
+                                 }];
 }
 
 - (void)finishMigrationSource:(JS::NativeApexKeychain::MigrationSource &)source

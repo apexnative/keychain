@@ -51,6 +51,15 @@ NSString *_Nullable ANKUnavailableReason(ANKAccessControl accessControl,
 /// The major version of iOS: the biometry's state hash may change with it.
 @property (class, nonatomic, readonly) NSInteger majorOSVersion;
 
+/// Whether the data the passcode protects can be read now: NO while the device is locked, when a `whenUnlocked*` item
+/// (and a protected item) answers errSecInteractionNotAllowed. What UIKit said last (`isProtectedDataAvailable`, then
+/// its notifications); YES until it said anything. From any thread.
+@property (class, nonatomic, readonly) BOOL isProtectedDataAvailable;
+
+/// Starts following whether protected data is available, once: as early as possible, so that UIKit answered before a
+/// read asks.
++ (void)followProtectedData;
+
 /// For the tests: an Info.plist to read instead of the app's, and a biometry state to report instead of the device's
 /// (`NSNull` — none enrolled). Nil — the real ones.
 @property (class, nonatomic, nullable) NSDictionary *testInfoDictionary;

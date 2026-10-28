@@ -8,12 +8,16 @@
 #import "ANKError.h"
 #import "ANKKeychainModule.h"
 #import "ANKKeychainStore.h"
+#import "ANKMigration.h"
 #import "ANKTestBiometry.h"
 #import "ANKTestPromise.h"
 
 // Protected reads through the module, as JavaScript makes them, against the simulator's own prompts: Face ID is
 // enrolled, a test shows it a face (ANKShowFace) and sees which prompts LocalAuthentication was asked for
-// (ANKPrompts). A read that waits until a face matches had a prompt; one that settles without a face had none.
+// (ANKPrompts). A read that waits until a face matches had a prompt; one that settles without a face had none. On a
+// device the Keychain shows the prompt during the read, with the texts of the context the read passes it
+// (ANKAuthenticator.testReadObserver shows that context here); the simulator's Keychain shows none, so the
+// authenticator shows it before the read.
 //
 // What the simulator can't do is on the device checklist: a test can't tap its prompt's Cancel or fallback button
 // (XCUIApplication is refused in a unit-test bundle), a face that doesn't match leaves the prompt waiting for a tap
@@ -60,6 +64,7 @@ static NSDictionary *ANKOptions(NSDictionary *changes) {
 - (void)tearDown {
     // A prompt a failed test left open would hold up the next test's.
     ANKResetPrompts();
+    ANKAuthenticator.testReadObserver = nil;
     [ANKAuthenticator.shared forgetAllContexts];
     if (_store == nil) return;
     JS::NativeApexKeychain::Store store(_store);
@@ -146,28 +151,15 @@ static NSDictionary *ANKOptions(NSDictionary *changes) {
     return [_module hasItemSync:store key:key][@"value"];
 }
 
-// The context the authenticator keeps for the item: what a read of it gets inside its authValidity window.
-- (LAContext *)cachedContextOf:(NSString *)key {
-    ANKKeychainStore *keychain = [[ANKKeychainStore alloc] initWithService:_store[@"service"] accessGroup:nil];
-    ANKItem *item = [keychain attributesForKey:key error:NULL];
-    __block LAContext *context = nil;
-    __block BOOL answered = NO;
-    __block BOOL wasCached = NO;
-    [ANKAuthenticator.shared authenticateItem:item
-                                      service:keychain.service
-                                       prompt:[[ANKPrompt alloc] initWithTitle:nil cancel:nil fallback:nil]
-                                   completion:^(LAContext *authenticated, BOOL cached, NSError *error) {
-                                     context = authenticated;
-                                     wasCached = cached;
-                                     answered = YES;
-                                   }];
-    XCTAssertTrue(ANKWaitUntil(5,
-                               ^BOOL {
-                                 return answered;
-                               }),
-                  @"The item's context wasn't cached: a prompt was asked for.");
-    XCTAssertTrue(wasCached);
-    return context;
+// The contexts the reads that may prompt pass the Keychain, in order, from now on.
+- (NSArray<LAContext *> *)recordReads {
+    NSMutableArray<LAContext *> *contexts = [NSMutableArray array];
+    ANKAuthenticator.testReadObserver = ^(LAContext *context) {
+      @synchronized(contexts) {
+          [contexts addObject:context];
+      }
+    };
+    return contexts;
 }
 
 #pragma mark - A prompt
@@ -175,19 +167,52 @@ static NSDictionary *ANKOptions(NSDictionary *changes) {
 - (void)testAReadWaitsForAFaceThatMatches {
     [self set:@"token" value:@"secret" options:@{@"accessControl" : @"biometryAny", @"label" : @"user"}];
 
+    NSArray<LAContext *> *reads = [self recordReads];
     ANKPromise *read = [self read:@"token"
-                           prompt:@{@"title" : @"Unlock the token", @"cancel" : @"Not now", @"fallback" : @"Password"}];
+                           prompt:@{@"title" : @"Unlock the token", @"cancel" : @"Not now"}];
     ANKTestPrompt *prompt = [self prompt:1];
     XCTAssertEqual(prompt.policy, LAPolicyDeviceOwnerAuthenticationWithBiometrics);
     XCTAssertEqualObjects(prompt.reason, @"Unlock the token");
     XCTAssertEqualObjects(prompt.cancelTitle, @"Not now");
-    XCTAssertEqualObjects(prompt.fallbackTitle, @"Password");
+    XCTAssertEqualObjects(prompt.fallbackTitle, @"");
     [self assertWaiting:read];
 
     [self match:prompt];
     [self waitFor:read];
     XCTAssertEqualObjects(read.value, (@{@"value" : @"secret", @"label" : @"user"}), @"%@", read.message);
     XCTAssertEqual(ANKPrompts().count, 1u);
+    // One read of the Keychain that could prompt, with the texts a device's Keychain shows on its prompt.
+    XCTAssertEqual(reads.count, 1u);
+    XCTAssertEqualObjects(reads.firstObject.localizedReason, @"Unlock the token");
+    XCTAssertEqualObjects(reads.firstObject.localizedCancelTitle, @"Not now");
+    XCTAssertEqualObjects(reads.firstObject.localizedFallbackTitle, @"");
+    // It can't prompt again: a window may hand it to reads that must not.
+    XCTAssertTrue(reads.firstObject.interactionNotAllowed);
+}
+
+- (void)testTheCallsThatCantPromptShowNone {
+    [self set:@"token" value:@"secret" options:@{@"accessControl" : @"biometryAny"}];
+    NSArray<LAContext *> *reads = [self recordReads];
+    JS::NativeApexKeychain::Store store(_store);
+
+    XCTAssertEqualObjects([_module getItemSync:store key:@"token"][@"error"][@"code"], ANKErrorAuthRequired);
+    XCTAssertEqualObjects([self has:@"token"], @YES);
+    ANKPromise *info = [ANKPromise new];
+    [_module getItemInfo:store key:@"token" resolve:info.resolve reject:info.reject];
+    XCTAssertEqualObjects(info.code, ANKErrorAuthRequired);
+    ANKPromise *keys = [ANKPromise new];
+    [_module getAllKeys:store resolve:keys.resolve reject:keys.reject];
+    XCTAssertEqualObjects(keys.value, @[]);
+    // A write over it, protected or not, and a delete.
+    [self set:@"token" value:@"again" options:@{@"accessControl" : @"biometryAny"}];
+    JS::NativeApexKeychain::WriteOptions open(ANKOptions(@{}));
+    XCTAssertEqualObjects([_module setItemSync:store key:@"token" value:@"open" options:open], @{});
+    [self set:@"token" value:@"locked" options:@{@"accessControl" : @"biometryAny"}];
+    XCTAssertEqualObjects([_module removeItemSync:store key:@"token"], @{});
+    XCTAssertEqualObjects([self has:@"token"], @NO);
+
+    XCTAssertEqual(ANKPrompts().count, 0u);
+    XCTAssertEqual(reads.count, 0u);
 }
 
 - (void)testEveryAccessControlPromptsWithItsPolicy {
@@ -210,7 +235,7 @@ static NSDictionary *ANKOptions(NSDictionary *changes) {
         XCTAssertEqual(prompt.policy, policies[name].integerValue, @"%@", name);
         XCTAssertEqualObjects(prompt.reason, ANKDefaultReason, @"%@", name);
         XCTAssertNil(prompt.cancelTitle, @"%@", name);
-        XCTAssertNil(prompt.fallbackTitle, @"%@", name);
+        XCTAssertEqualObjects(prompt.fallbackTitle, @"", @"%@", name);
         [self assertWaiting:read];
         [self match:prompt];
         [self waitFor:read];
@@ -386,7 +411,9 @@ static NSDictionary *ANKOptions(NSDictionary *changes) {
 
     // The context the reads share ends, as LocalAuthentication ends one it no longer keeps (too many contexts in the
     // process, its daemon restarted): the Keychain no longer takes it.
-    LAContext *context = [self cachedContextOf:@"token"];
+    LAContext *context = [ANKAuthenticator.shared cachedContextForService:_store[@"service"]
+                                                            accessControl:ANKAccessControlBiometryAny];
+    XCTAssertNotNil(context);
     [context invalidate];
     ANKKeychainStore *keychain = [[ANKKeychainStore alloc] initWithService:_store[@"service"] accessGroup:nil];
     NSError *error = nil;
@@ -404,6 +431,59 @@ static NSDictionary *ANKOptions(NSDictionary *changes) {
     [self waitFor:cached];
     XCTAssertEqualObjects(cached.value, @{@"value" : @"secret"}, @"%@", cached.message);
     XCTAssertEqual(ANKPrompts().count, 2u);
+}
+
+#pragma mark - Migration
+
+- (void)testAProtectedSourceIsReadWithOnePrompt {
+    // As react-native-keychain writes a password with biometry: not listed without a prompt, read with one.
+    NSString *service = _store[@"service"];
+    NSDictionary *query = @{
+        (__bridge id)kSecClass : (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService : service,
+        (__bridge id)kSecAttrAccount : @"alice",
+        (__bridge id)kSecUseDataProtectionKeychain : @YES,
+    };
+    NSMutableDictionary *item = [query mutableCopy];
+    item[(__bridge id)kSecValueData] = [@"secret" dataUsingEncoding:NSUTF8StringEncoding];
+    item[(__bridge id)kSecAttrAccessControl] = CFBridgingRelease(SecAccessControlCreateWithFlags(
+        kCFAllocatorDefault, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, kSecAccessControlBiometryAny, NULL));
+    XCTAssertEqual(SecItemAdd((__bridge CFDictionaryRef)item, NULL), errSecSuccess);
+    [self addTeardownBlock:^{
+      SecItemDelete((__bridge CFDictionaryRef)query);
+    }];
+    NSError *error = nil;
+    XCTAssertEqualObjects([ANKMigration sourcesOfLibrary:@"reactNativeKeychain"
+                                                services:@[ service ]
+                                                 servers:@[]
+                                             accessGroup:nil
+                                                   error:&error],
+                          @[], @"%@", error);
+
+    NSArray<LAContext *> *reads = [self recordReads];
+    ANKKeychainModule *module = _module;
+    ANKPromise *read = [ANKPromise new];
+    dispatch_async(_module.methodQueue, ^{
+      JS::NativeApexKeychain::MigrationSource source(@{
+          @"kind" : @"genericPassword",
+          @"service" : service,
+          @"account" : @"alice",
+          @"requiresAuth" : @YES,
+          @"migrated" : @NO,
+      });
+      JS::NativeApexKeychain::Prompt prompt(@{@"title" : @"Move the password", @"confirmationRequired" : @YES});
+      [module readMigrationSource:source prompt:prompt resolve:read.resolve reject:read.reject];
+    });
+    ANKTestPrompt *prompt = [self prompt:1];
+    XCTAssertEqual(prompt.policy, LAPolicyDeviceOwnerAuthentication);
+    XCTAssertEqualObjects(prompt.reason, @"Move the password");
+    [self assertWaiting:read];
+    [self match:prompt];
+    [self waitFor:read];
+    XCTAssertEqualObjects(read.value, @"secret", @"%@ %@", read.code, read.message);
+    XCTAssertEqual(ANKPrompts().count, 1u);
+    XCTAssertEqual(reads.count, 1u);
+    XCTAssertEqualObjects(reads.firstObject.localizedReason, @"Move the password");
 }
 
 #pragma mark - The enrolled biometry

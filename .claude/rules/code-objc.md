@@ -39,8 +39,9 @@ columns.
 - Every Keychain call runs on the module's serial queue (`methodQueue` in `ANKKeychainModule.mm`): React Native calls
   the asynchronous methods on it, and a synchronous method runs its Keychain calls on it (`onQueue:`), so calls keep
   the order JavaScript made them in.
-- That queue never waits for a person. A prompt is shown by `ANKAuthenticator`, one at a time, on a queue of its own;
-  the read then goes back to the module's queue with the authenticated `LAContext`.
+- That queue never waits for a person. A read that may prompt is the exception: `ANKAuthenticator` runs it, one at a
+  time, on a queue of its own, where the Keychain's prompt blocks the thread; the answer then goes back to the
+  module's queue.
 - In a block that may outlive its object: `__weak ANKFoo *weakSelf = self;` and a strong local inside it. A singleton
   (`ANKAuthenticator.shared`) may take `self`.
 - Newer OS features: `if (@available(iOS 18.0, *))`, and `API_AVAILABLE(ios(18.0))` on methods called only inside
@@ -75,13 +76,26 @@ Each of these was a bug once, or cost a test session a day.
   item. Search with `rangeOfString:options:NSAnchoredSearch | NSLiteralSearch` (`ANKKeychainStore.mm`,
   `deleteTemporariesOfKey:`).
 - **The simulator's Keychain enforces no access control.** A silent read, update or delete of a protected item
-  succeeds there. Whether a read needs a prompt comes from the item's own metadata, never from an `OSStatus`; only a
-  device proves the Keychain refuses.
-- **`evaluateAccessControl` isn't on the simulator** (LAError -1020): the simulator evaluates the policy of the item's
-  flags instead (`#if TARGET_OS_SIMULATOR` in `ANKAuthenticator.mm`).
+  succeeds there, and a read with a context shows no prompt. There an item's metadata says it's protected
+  (`ANKIsProtected` in `ANKKeychainStore.mm`), on a device the silent read's `errSecInteractionNotAllowed`; only a
+  device proves what the Keychain refuses.
+- **No prompt of the package's own on a device.** The read passes the Keychain a context with the texts
+  (`localizedReason`, the cancel and fallback titles), and the Keychain shows one prompt for the item's access
+  control. The simulator's shows none: there `ANKAuthenticator` evaluates the policy of the item's flags first
+  (`#if TARGET_OS_SIMULATOR`; `evaluateAccessControl` isn't on the simulator, LAError -1020). The Keychain answers an
+  `OSStatus`, not an `LAError`: `SYSTEM_CANCELED`, `LOCKOUT` and `KEY_INVALIDATED` are told from the state after it.
 - **The biometry state.** `domainState.biometry.stateHash` is nil on iOS 18 (the simulator, at least); the package
   falls back to `evaluatedPolicyDomainState` (`ANKDevice.mm`). On the simulator the hash never changes with a new
   enrollment: `KEY_INVALIDATED` is tested with an injected state, and on a device.
+- **Every query of a protected item needs the user, its attributes too.** On a device, a `SecItemCopyMatching` that
+  matches an item with `kSecAttrAccessControl` asks for authentication even when it returns attributes only: with
+  the silent context (`ANKSilentContext()`) it answers `errSecInteractionNotAllowed`, without a context the system
+  shows its own Face ID. rc.2 read the attributes before its prompt and failed; reading them without a context showed
+  the system's prompt from calls that promise none. No query may match a protected item but the read that prompts:
+  reads, probes, writes and deletes pass the silent context; a listing passes `kSecUseAuthenticationUI` =
+  `kSecUseAuthenticationUISkip` (not deprecated, unlike `…UIFail`) and doesn't see protected items. A silent read's
+  `errSecInteractionNotAllowed` is a protected item while protected data is available
+  (`ANKDevice.isProtectedDataAvailable`), else a locked device. A query with neither is a bug the simulator won't show.
 - **An invalidated `LAContext`** makes a protected read fail with `errSecAuthFailed`: the module shows a new prompt
   instead of answering `AUTH_FAILED`.
 - **The app leaving during a prompt** ends it with `SYSTEM_CANCELED` (-4); leaving the instant the first prompt is

@@ -36,6 +36,11 @@ static LAContext *ANKAuthenticated(void) {
     return context;
 }
 
+// What the store keeps of an item, a protected one included: the simulator gives it with any context.
+static ANKItem *ANKStoredItem(ANKKeychainStore *store, NSString *key) {
+    return [store itemForKey:key context:ANKAuthenticated() error:NULL];
+}
+
 static NSData *ANKText(NSString *text) {
     return [text dataUsingEncoding:NSUTF8StringEncoding];
 }
@@ -466,23 +471,30 @@ static NSData *ANKText(NSString *text) {
 - (void)testAnItemWithAccessControlIsReadOnlyWithAContext {
     [self requireAccessControl:ANKAccessControlBiometryAny];
     [self set:ANKText(@"secret") key:@"protected" options:ANKProtectedWith(ANKAccessControlBiometryAny, 30, @"label")];
+    [self set:ANKText(@"open") key:@"open" options:ANKOptionsWith()];
 
+    // Nothing of it without a context, as on a device, where its attributes need the user too: whether it's there
+    // only.
     NSError *error = nil;
     XCTAssertNil([_store itemForKey:@"protected" context:nil error:&error]);
     XCTAssertEqualObjects([ANKError codeOfError:error], ANKErrorAuthRequired, @"%@", error);
-
-    // Never a prompt for these.
-    ANKItem *attributes = [_store attributesForKey:@"protected" error:&error];
-    XCTAssertEqual(attributes.accessControl, ANKAccessControlBiometryAny);
-    XCTAssertEqual(attributes.metadata.authValidity, 30);
-    XCTAssertEqual(attributes.accessible, ANKAccessibleWhenUnlockedThisDeviceOnly);
-    XCTAssertEqualObjects(attributes.label, @"label");
-    XCTAssertTrue(attributes.accessControlRef != NULL);
+    error = nil;
+    XCTAssertNil([_store attributesForKey:@"protected" error:&error]);
+    XCTAssertEqualObjects([ANKError codeOfError:error], ANKErrorAuthRequired, @"%@", error);
     XCTAssertEqualObjects([_store hasItemForKey:@"protected" error:&error], @YES);
-    XCTAssertEqualObjects([self allKeys:_store], @[ @"protected" ]);
+    XCTAssertEqualObjects([self allKeys:_store], @[ @"open" ]);
 
     ANKItem *item = [_store itemForKey:@"protected" context:ANKAuthenticated() error:&error];
     XCTAssertEqualObjects(item.data, ANKText(@"secret"), @"%@", error);
+    XCTAssertEqual(item.accessControl, ANKAccessControlBiometryAny);
+    XCTAssertEqual(item.metadata.authValidity, 30);
+    XCTAssertEqual(item.accessible, ANKAccessibleWhenUnlockedThisDeviceOnly);
+    XCTAssertEqualObjects(item.label, @"label");
+    XCTAssertTrue(item.accessControlRef != NULL);
+
+    // Deleted without a prompt.
+    XCTAssertTrue([_store removeItemForKey:@"protected" error:&error], @"%@", error);
+    XCTAssertEqualObjects([_store hasItemForKey:@"protected" error:&error], @NO);
 }
 
 - (void)testEveryAccessControlIsStoredWithItsFlags {
@@ -521,7 +533,7 @@ static NSData *ANKText(NSString *text) {
                                                               label:nil]];
 
             NSError *error = nil;
-            ANKItem *item = [_store attributesForKey:key error:&error];
+            ANKItem *item = [_store itemForKey:key context:ANKAuthenticated() error:&error];
             XCTAssertEqual(item.accessControl, value, @"%@", key);
             XCTAssertEqual(item.accessible, accessible.integerValue, @"%@", key);
             // The Keychain's own access control: these flags and this accessibility, no other.
@@ -546,8 +558,7 @@ static NSData *ANKText(NSString *text) {
     ANKDevice.testBiometryState = state;
     [self set:ANKText(@"secret") key:@"bound" options:ANKProtectedWith(ANKAccessControlBiometryCurrentSet)];
 
-    NSError *error = nil;
-    ANKItemMetadata *metadata = [_store attributesForKey:@"bound" error:&error].metadata;
+    ANKItemMetadata *metadata = ANKStoredItem(_store, @"bound").metadata;
     XCTAssertEqualObjects(metadata.domainState, state);
     XCTAssertEqual(metadata.osVersion, ANKDevice.majorOSVersion);
 }
@@ -589,7 +600,7 @@ static NSData *ANKText(NSString *text) {
                              (__bridge id)kSecAttrSynchronizable : @NO,
                          }]),
                    errSecSuccess);
-    XCTAssertEqual([_store attributesForKey:@"protected" error:NULL].accessControl, ANKAccessControlBiometryAny);
+    XCTAssertEqual(ANKStoredItem(_store, @"protected").accessControl, ANKAccessControlBiometryAny);
 
     [self set:ANKText(@"new") key:@"protected" options:ANKOptionsWith(ANKAccessibleAfterFirstUnlock, NO, @"label")];
 

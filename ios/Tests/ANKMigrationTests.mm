@@ -239,7 +239,17 @@ static NSString *ANKProtectionKey(id protection) {
     XCTAssertEqualObjects([self linesOf:@"reactNativeKeychain" services:@[ _service ] servers:@[]], @[]);
 }
 
-- (void)testAProtectedSourceNeedsAPrompt {
+// A source as the module gets it from JavaScript: listed, or named by the app.
+- (ANKMigrationSource *)source:(ANKMigrationKind)kind service:(NSString *)service account:(NSString *)account {
+    return [[ANKMigrationSource alloc] initWithKind:kind
+                                            service:service
+                                            account:account
+                                        accessGroup:nil
+                                       requiresAuth:YES
+                                           migrated:NO];
+}
+
+- (void)testAProtectedSourceIsntListedAndNeedsAPrompt {
     for (NSNumber *flags in @[
              @(kSecAccessControlBiometryAny), @(kSecAccessControlBiometryCurrentSet), @(kSecAccessControlUserPresence),
              @(kSecAccessControlDevicePasscode)
@@ -251,16 +261,16 @@ static NSString *ANKProtectionKey(id protection) {
               protection:ANKAccessControlWith((SecAccessControlCreateFlags)flags.unsignedIntegerValue)
                cloudSync:NO];
 
-        ANKMigrationSource *source =
-            [self sourcesOf:@"reactNativeKeychain" services:@[ service ] servers:@[]].firstObject;
-        XCTAssertTrue(source.requiresAuth, @"%@", flags);
+        // On a device its attributes need the user: a listing skips it, and the simulator leaves it out too.
+        XCTAssertEqualObjects([self linesOf:@"reactNativeKeychain" services:@[ service ] servers:@[]], @[], @"%@",
+                              flags);
+        ANKMigrationSource *source = [self source:ANKMigrationKindGenericPassword service:service account:@"alice"];
         NSError *error = nil;
         XCTAssertNil([ANKMigration dataOfSource:source context:nil error:&error]);
-        XCTAssertEqualObjects([ANKError codeOfError:error], ANKErrorAuthRequired);
-        SecAccessControlRef accessControl = [ANKMigration copyAccessControlOfSource:source error:NULL];
-        XCTAssertTrue(accessControl != NULL);
-        if (accessControl != NULL) CFRelease(accessControl);
+        XCTAssertEqualObjects([ANKError codeOfError:error], ANKErrorAuthRequired, @"%@", flags);
         XCTAssertEqualObjects([self valueOf:source context:ANKAuthenticated()], @"secret");
+        XCTAssertTrue([ANKMigration finishSource:source removeSource:YES error:&error], @"%@", error);
+        XCTAssertNil([self valueOf:source context:ANKAuthenticated()]);
     }
 }
 
@@ -280,15 +290,15 @@ static NSString *ANKProtectionKey(id protection) {
         (__bridge id)kSecValueData : ANKText(@"theirs"),
     }];
 
+    // 'b' has only a variant with access control, which can't be listed without a prompt.
     XCTAssertEqualObjects([self linesOf:@"expoSecureStore" services:@[ _expo ] servers:@[]], (@[
                               [NSString stringWithFormat:@"secureStore %@ a", _expo],
-                              [NSString stringWithFormat:@"secureStore %@ b auth", _expo],
                               [NSString stringWithFormat:@"secureStore %@ c", _expo],
                           ]));
     XCTAssertEqualObjects([self valueOf:[self sourceOf:@"expoSecureStore" account:@"a"] context:nil], @"no-auth");
     XCTAssertEqualObjects([self valueOf:[self sourceOf:@"expoSecureStore" account:@"c"] context:nil],
                           @"first versions");
-    ANKMigrationSource *b = [self sourceOf:@"expoSecureStore" account:@"b"];
+    ANKMigrationSource *b = [self source:ANKMigrationKindSecureStore service:_expo account:@"b"];
     NSError *error = nil;
     XCTAssertNil([ANKMigration dataOfSource:b context:nil error:&error]);
     XCTAssertEqualObjects([ANKError codeOfError:error], ANKErrorAuthRequired);
@@ -306,6 +316,9 @@ static NSString *ANKProtectionKey(id protection) {
                                        error:NULL]);
     XCTAssertEqualObjects([self linesOf:@"expoSecureStore" services:@[ _expo ] servers:@[]],
                           (@[ [NSString stringWithFormat:@"secureStore %@ b", _expo] ]));
+    // The variant with access control too, which no listing shows.
+    ANKMigrationSource *a = [self source:ANKMigrationKindSecureStore service:_expo account:@"a"];
+    XCTAssertNil([self valueOf:a context:ANKAuthenticated()]);
 }
 
 #pragma mark - Finishing

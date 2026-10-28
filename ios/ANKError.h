@@ -7,7 +7,6 @@ NS_ASSUME_NONNULL_BEGIN
 typedef NSString *ANKErrorCode NS_TYPED_ENUM;
 
 extern ANKErrorCode const ANKErrorUserCanceled;
-extern ANKErrorCode const ANKErrorUserFallback;
 extern ANKErrorCode const ANKErrorSystemCanceled;
 extern ANKErrorCode const ANKErrorAuthFailed;
 extern ANKErrorCode const ANKErrorLockout;

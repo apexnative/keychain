@@ -43,9 +43,9 @@ BOOL ANKMigrationKindOfName(NSString *_Nullable name, ANKMigrationKind *kind);
 @end
 
 /// The items of react-native-keychain and expo-secure-store as they write them: read straight from the
-/// Keychain of the app, the package's own items left out. Synchronous, without a prompt, serialized on the module's
-/// queue as `ANKKeychainStore`. A failure returns NO or nil and sets an `ANKErrorDomain` error; a missing item is no
-/// failure.
+/// Keychain of the app, the package's own items left out. Synchronous, serialized on the module's queue as
+/// `ANKKeychainStore`, and without a prompt, but for a read with a context, which `ANKAuthenticator` runs on its own
+/// queue. A failure returns NO or nil and sets an `ANKErrorDomain` error; a missing item is no failure.
 ///
 /// - react-native-keychain: a generic password of `kSecAttrService` = the service (default: the bundle identifier),
 ///   `kSecAttrAccount` = the username; an internet password of `kSecAttrServer` = the server. It keeps one item per
@@ -58,25 +58,24 @@ BOOL ANKMigrationKindOfName(NSString *_Nullable name, ANKMigrationKind *kind);
 @interface ANKMigration : NSObject
 
 /// The sources of the library ('reactNativeKeychain', 'expoSecureStore') in the services and servers named: none of
-/// them, the library's default. Their `requiresAuth` is the Keychain's answer to a read without a prompt (the
-/// simulator, which protects nothing, tells it from the item's access control).
+/// them, the library's default. Only items without access control: a protected item can't be listed without a prompt
+/// on a device, and the simulator leaves them out too. Their `requiresAuth` is the Keychain's answer to a read without
+/// a prompt.
 + (nullable NSArray<ANKMigrationSource *> *)sourcesOfLibrary:(NSString *)library
                                                     services:(NSArray<NSString *> *)services
                                                      servers:(NSArray<NSString *> *)servers
                                                  accessGroup:(nullable NSString *)accessGroup
                                                        error:(NSError **)error;
 
-/// The value of the source; nil without an error when the item is gone. `context` is one a prompt authenticated: nil —
-/// an item that needs a prompt fails with AUTH_REQUIRED.
+/// The value of the source; nil without an error when the item is gone. Nil `context`: no prompt, and an item that
+/// needs one fails with AUTH_REQUIRED. With a context, the Keychain may show its prompt and wait for the user
+/// (`ANKAuthenticator`).
 + (nullable NSData *)dataOfSource:(ANKMigrationSource *)source
                           context:(nullable LAContext *)context
                             error:(NSError **)error;
 
-/// The item's `kSecAttrAccessControl`, which a prompt evaluates; NULL when the item is gone or has none.
-+ (nullable SecAccessControlRef)copyAccessControlOfSource:(ANKMigrationSource *)source
-                                                    error:(NSError **)error CF_RETURNS_RETAINED;
-
-/// Deletes the source, every variant of an expo-secure-store key, when `removeSource`; else marks it migrated.
+/// Deletes the source, every variant of an expo-secure-store key, when `removeSource`, without a prompt; else marks it
+/// migrated.
 + (BOOL)finishSource:(ANKMigrationSource *)source removeSource:(BOOL)removeSource error:(NSError **)error;
 
 /// For the tests: forgets every "migrated" mark.

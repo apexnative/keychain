@@ -227,11 +227,10 @@ NSString *ANKValueOfData(NSData *data, ANKEncoding encoding, NSError **error) {
 
 @implementation ANKPrompt
 
-- (instancetype)initWithTitle:(NSString *)title cancel:(NSString *)cancel fallback:(NSString *)fallback {
+- (instancetype)initWithTitle:(NSString *)title cancel:(NSString *)cancel {
     if (self = [super init]) {
         _title = [title copy];
         _cancel = [cancel copy];
-        _fallback = [fallback copy];
     }
     return self;
 }
