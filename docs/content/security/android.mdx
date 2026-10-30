@@ -13,6 +13,7 @@ Each service has one file: `noBackupFilesDir/apexnative-keychain/<sha256(service
 - **Atomic writes.** A write goes through `AtomicFile`: the new file replaces the old one in one rename.
 - **Concurrency.** Each service has a cache in memory; writes take a lock per service, reads run in parallel.
 - **Lazy.** Nothing happens when the module is created: a file is read the first time its service is used.
+- **A damaged file.** A file that can't be read (not JSON, another version, cut short) fails every call of its service with `DATA_CORRUPTED`, a removal and a write too: both keep the file's other items. `clear()` deletes the file without reading it, with the service's Keystore keys, and the service starts empty.
 
 The format, version 1:
 

@@ -60,6 +60,37 @@ keychain.getItemSync('lastEnvironment'); // 'staging'
 
 The wait is for that storage work only, never for the user: an async read that waits for its prompt doesn't hold up a sync call. But a sync call made behind many async calls waits for all of them, on the JS thread.
 
+## Recovering at startup {#recover}
+
+A read at startup that throws must not stop the app from starting, or every launch fails the same way. Most codes pass by themselves: the device gets unlocked, the user comes back. `DATA_CORRUPTED` doesn't: remove the damaged item, and when the removal fails too, the storage of the service is damaged as a whole (on Android a service is one file), and `clear()` starts it anew.
+
+```ts
+import {
+  KeychainErrorCode,
+  isKeychainError,
+  keychain,
+} from '@apexnative/keychain';
+
+function readToken(): string | null {
+  try {
+    return keychain.getItemSync('accessToken');
+  } catch (error) {
+    if (!isKeychainError(error, KeychainErrorCode.DataCorrupted)) {
+      return null; // locked, or another passing cause: read later
+    }
+  }
+  try {
+    keychain.removeItemSync('accessToken'); // one damaged item
+  } catch {
+    // The storage itself is damaged: start it anew.
+    keychain.clear().catch(() => {});
+  }
+  return null; // the user signs in again
+}
+```
+
+There is no `clearSync`, and it isn't needed: a sync call waits for the async calls made before it, so the next `getItemSync` already sees the cleared storage, without an `await`. `clear()` never reads the storage it deletes, so it works on a damaged one.
+
 ## When to use them {#when}
 
 - **At startup**, to choose the first screen without a loading state.

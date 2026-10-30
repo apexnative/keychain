@@ -242,17 +242,26 @@ class ProtectionTest : KeychainTestCase() {
     @Test
     fun aDamagedFileIsDataCorruptedUntilCleared() {
         keychain.setItem(service, "token", "secret", Encoding.UTF8, options())
+        keychain.setItem("$service.other", "token", "other", Encoding.UTF8, options())
         storeFile(service).writeText("{ not json")
+
+        // Every call of the service needs the file, a removal and a write too; another service doesn't.
         val again = newKeychain()
         assertCode(KeychainErrorCode.DATA_CORRUPTED) { again.getItem(service, "token", Encoding.UTF8) }
         assertCode(KeychainErrorCode.DATA_CORRUPTED) { again.hasItem(service, "token") }
         assertCode(KeychainErrorCode.DATA_CORRUPTED) { again.getAllKeys(service) }
+        assertCode(KeychainErrorCode.DATA_CORRUPTED) { again.removeItem(service, "token") }
         assertCode(KeychainErrorCode.DATA_CORRUPTED) { again.setItem(service, "token", "v", Encoding.UTF8, options()) }
+        assertEquals("other", again.getItem("$service.other", "token", Encoding.UTF8)?.value)
 
+        // clear() doesn't read the file: it deletes it with the service's keys, and the service works again.
         again.clear(service)
+        assertFalse(storeFile(service).exists())
+        assertEquals(emptyList<String>(), keystoreAliases(service))
         assertEquals(emptyList<String>(), again.getAllKeys(service))
         again.setItem(service, "token", "fresh", Encoding.UTF8, options())
         assertEquals("fresh", again.getItem(service, "token", Encoding.UTF8)?.value)
+        again.clear("$service.other")
     }
 
     @Test

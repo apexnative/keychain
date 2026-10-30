@@ -99,7 +99,7 @@ The enrolled biometrics changed since the item was written with `biometryCurrent
 The stored data can't be decrypted or decoded, and it isn't an invalidation: the data was changed, moved to another key, or its file is damaged.
 
 - iOS: `errSecDecode`. Android: `AEADBadTagException`, `BadPaddingException`, a store file that isn't valid.
-- **Do:** remove the item and get the value again; report it with `nativeCode`.
+- **Do:** remove the item and get the value again; report it with `nativeCode`. If the removal fails with `DATA_CORRUPTED` too, the storage of the whole service is damaged: on Android a service is one file, and every call of it needs the file. `clear()` deletes it without reading it; then sign the user in again. [Recovering at startup](../fundamentals/sync-api#recover) shows both steps.
 
 ## Not now {#not-now}
 
