@@ -33,7 +33,7 @@ if (isKeychainError(error) && error.code === 'KEY_INVALIDATED') signInAgain(); /
 | The item is lost | `KEY_INVALIDATED` | Sign the user in again and store it anew |
 | Not now | `INTERACTION_NOT_ALLOWED`, `AUTH_REQUIRED`, `NO_ACTIVITY` | Read later, or with the async method |
 | The app's setup | `MISSING_ENTITLEMENT`, `MISSING_USAGE_DESCRIPTION`, `INVALID_ARGUMENT` | Fix the code or the configuration |
-| The data | `DATA_CORRUPTED`, `UNKNOWN` | Remove the item; report `nativeCode` |
+| The data | `DATA_CORRUPTED`, `UNKNOWN` | Remove the item, or `clear()` the storage when the removal fails too; report `nativeCode` |
 
 [Error codes](../help/error-codes) has a section for every code: when it happens, the native error behind it, and what to do.
 
